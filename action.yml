@@ -1,0 +1,108 @@
+name: Deploy AWS Lambda Function
+description: Deploys an AWS Lambda function using the AWS SDK.
+inputs:
+  function-name:
+    description: 'Name of the Lambda function'
+    required: true
+  region:
+    description: 'AWS region'
+    required: true
+  zip-file-path:
+    description: 'Path to the deployment ZIP file' 
+    required: false
+  code-artifacts-dir:
+    description: 'The path to a directory of code artifacts to zip and deploy to Lambda.'
+    required: false
+  publish:
+    description: 'Set to true to publish a new version of the function after updating the code.'
+    required: false
+    default: 'true'
+  dry-run:
+    description: 'Set true to validate the request parameters and access permissions without modifying the function code'
+    required: false
+    default: 'true'
+  revision-id: 
+    description: 'Update the function only if the revision ID matches the ID that is specified.'
+    required: false
+  architectures:
+    description: 'The instruction set architecture that the function supports.'
+    required: false
+    default: 'x86_64'
+  source-kms-key-arn:
+    description: 'The ARN of the Key Management Service (KMS) customer managed key that is used to encrypt your functions .zip deployment package'
+    required: false
+  role:
+    description: 'The Amazon Resource Name (ARN) of the functions execution role. Required when creating a new function.'
+    required: false
+  handler:
+    description: 'The name of the method within your code that Lambda calls to run your function.'
+    required: false
+  function-description:
+    description: 'A description of the function'
+    required: false
+  memory-size:
+    description: 'The amount of memory available to the function at runtime'
+    required: false
+    default: 128
+  timeout:
+    description: 'The amount of time (in seconds) that Lambda allows a function to run before stopping it.'
+    required: false
+    default: 3
+  vpc-config:
+    description: 'For network connectivity to Amazon Web Services resources in a VPC, specify a list of security groups and subnets in the VPC.'
+    required: false
+  environment:
+    description: (Optional) Environment variables as a JSON string (e.g. {"ENV":"prod"})
+    required: false
+  runtime:
+    description: 'The identifier of the runtime. Required for .zip file'
+    required: false
+    default: 'nodejs'
+  dead-letter-config:
+    description: 'Specifies the queue or topic where Lambda sends asynchronous events when they fail processing.'
+    required: false
+  kms-key-arn:
+    description: 'The ARN of the Key Management Service (KMS) customer managed key'
+    required: false
+  tracing-config:
+    description: 'Set Mode to Active to sample and trace a subset of incoming requests with X-Ray.'
+    required: false
+  layers:
+    description: 'A list of function layers to add to the functions execution environment.'
+    required: false
+  file-system-configs:
+    description: 'Connection settings for an Amazon EFS file system.'
+    required: false
+  image-config:
+    description: 'Configuration for the Lambda functions container image.'
+    required: false
+  ephemeral-storage:
+    description: 'The size of the functions /tmp directory in MB. The default value is 512, but can be any whole number between 512 and 10,240 MB.'
+    required: false
+    default: 512
+  snap-start: 
+    description: 'The functions SnapStart setting.'
+    required: false
+  logging-config:
+    description: 'The Amazon CloudWatch Logs configuration settings for the function.'
+    required: false
+  code-signing-config-arn:
+    description: 'The ARN of a code-signing configuration to use on this function.'
+    required: false
+  package-type:
+    description: 'The type of deployment package. Set to Image for container image and Zip for .zip file archive.'
+    required: false
+    default: 'Zip'
+  tags:
+    description: 'Tags to apply to the function as a JSON string (e.g. {"Environment":"Production","Team":"DevOps"})'
+    required: false
+    
+outputs:
+  function-arn:
+    description: 'The ARN of the updated Lambda function.'
+  version:
+    description: 'The function version if a new version was published.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
