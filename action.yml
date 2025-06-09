@@ -18,7 +18,7 @@ inputs:
     required: false
     default: 'true'
   dry-run:
-    description: 'Set true to validate the request parameters and access permissions without modifying the function code'
+    description: 'Set true to validate the request parameters and access permissions without modifying the function code. Applicable for updating function code only.'
     required: false
     default: 'true'
   revision-id: 
@@ -43,7 +43,6 @@ inputs:
   memory-size:
     description: 'The amount of memory available to the function at runtime'
     required: false
-    default: 128
   timeout:
     description: 'The amount of time (in seconds) that Lambda allows a function to run before stopping it.'
     required: false

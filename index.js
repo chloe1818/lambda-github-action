@@ -1,253 +1,372 @@
 const core = require('@actions/core');
-const github = require('@actions/github');
-const { LambdaClient, 
-        CreateFunctionCommand, 
-        GetFunctionConfigurationCommand, 
-        UpdateFunctionConfigurationCommand, 
-        UpdateFunctionCodeCommand } = require('@aws-sdk/client-lambda');
-const fs = require('fs');
+const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand } = require('@aws-sdk/client-lambda');
+const fs = require('fs/promises'); 
 const path = require('path');
-const util = require('util');
-const exec = util.promisify(require('child_process').exec);
+const AdmZip = require('adm-zip');
+const validations = require('./validations');
 
 async function run() {
-    try {  
-        // Get and validate required inputs
-        const functionName = core.getInput('function-name', { required: true });
-        if (!functionName) {
-            core.setFailed('Function name must be provided');
-            return;
-        }
+  try {  
+    const inputs = validations.validateAllInputs();
+    if (!inputs.valid) {
+      return;
+    }
 
-        const region = core.getInput('region', { required: true });
-        if (!region) {
-            core.setFailed('Region must be provided');
-            return;
-        }
+    const {
+      functionName, region, zipFilePath, codeArtifactsDir,
+      ephemeralStorage, parsedMemorySize, timeout,
+      role, codeSigningConfigArn, kmsKeyArn, sourceKmsKeyArn,
+      environment, vpcConfig, deadLetterConfig, tracingConfig, 
+      layers, fileSystemConfigs, imageConfig, snapStart, 
+      loggingConfig, tags,
+      parsedEnvironment, parsedVpcConfig, parsedDeadLetterConfig, 
+      parsedTracingConfig, parsedLayers, parsedFileSystemConfigs, 
+      parsedImageConfig, parsedSnapStart, parsedLoggingConfig, parsedTags,
+      functionDescription, packageType, dryRun, publish, revisionId,
+      runtime, handler, architectures
+    } = inputs;
+    
+    let finalZipPath = zipFilePath;
+    if(codeArtifactsDir) {
+      if(dryRun) {
+        core.info('DRY RUN MODE: No AWS resources will be created or modified');
+      }
+      core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
+      finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
+    }
 
-        const zipFilePath = core.getInput('zip-file-path');
-        const codeArtifactsDir = core.getInput('code-artifacts-dir');
-        if (!zipFilePath && !codeArtifactsDir) {
-            core.setFailed('Either zip-file-path or code-artifacts-dir must be provided');
-            return;
-        }
+    const client = new LambdaClient({
+      region,
+    });
 
-        let finalZipPath = zipFilePath;
-        if(codeArtifactsDir) {
-            core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
-            finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
-        }
+    core.info(`Checking if ${functionName} exists`);
+    let functionExists = await checkFunctionExists(client, functionName);
 
-        // Get and validate numeric inputs
-        const ephemeralStorage = parseInt(core.getInput('ephemeral-storage', { required: false })) || 512;
-        if (ephemeralStorage < 512 || ephemeralStorage > 10240) {
-            core.setFailed(`Ephemeral storage must be between 512 MB and 10,240 MB, got: ${ephemeralStorage}`);
-            return;
-        }
+    if (!functionExists) {
+      if (dryRun) {
+        core.setFailed('DRY RUN MODE can only be used for updating function code of existing functions');
+        return;
+      }
 
-        const memorySize = parseInt(core.getInput('memory-size', { required: false })) || 128;
-        if (memorySize < 128 || memorySize > 10240) {
-            core.setFailed(`Memory size must be between 128 MB and 10,240 MB, got: ${memorySize}`);
-            return;
-        } 
+      core.info(`Function ${functionName} doesn't exist, creating new function`);
 
-        const timeout = parseInt(core.getInput('timeout', { required: false })) || 3;
-        if (timeout < 1 || timeout > 900) {
-            core.setFailed(`Timeout must be between 1 and 900 seconds, got: ${timeout}`);
-            return;
-        }
+      if(!role) {
+        core.setFailed('Role ARN must be provided when creating a new function');
+        return;
+      }
 
-        // Get and validate ARN inputs
-        const role = core.getInput('role', { required: false });
-        const codeSigningConfigArn = core.getInput('code-signing-config-arn', { required: false });
-        const kmsKeyArn = core.getInput('kms-key-arn', { required: false });
-        const sourceKmsKeyArn = core.getInput('source-kms-key-arn', { required: false });
-        if (role && !validateRoleArn(role)) return;
-        if (codeSigningConfigArn && !validateCodeSigningConfigArn(codeSigningConfigArn)) return;
-        if (kmsKeyArn && !validateKmsKeyArn(kmsKeyArn)) return;
-        if (sourceKmsKeyArn && !validateKmsKeyArn(sourceKmsKeyArn)) return; // Reuse KMS validator
+      // Create function
+      try {
+        const input = {
+          FunctionName: functionName,
+          Runtime: runtime,
+          Role: role,
+          Handler: handler,
+          Code: {
+            ZipFile: await fs.readFile(finalZipPath)
+          },
+          Description: functionDescription,
+          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+          Timeout: timeout,
+          PackageType: packageType,
+          Publish: publish,
+          Architectures: [architectures],
+          EphemeralStorage: { Size: ephemeralStorage },
+          ...(revisionId && { RevisionId: revisionId }),
+          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
+          ...(environment && { Environment: { Variables: parsedEnvironment } }),
+          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
+          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
+          ...(layers && { Layers: parsedLayers }),
+          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
+          ...(imageConfig && { ImageConfig: parsedImageConfig }),
+          ...(snapStart && { SnapStart: parsedSnapStart }),
+          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig }),
+          ...(tags && { Tags: parsedTags }),
+          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
+          ...(codeSigningConfigArn && { CodeSigningConfigArn: codeSigningConfigArn }),
+          ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
+        };
 
-        // Get JSON inputs
-        const environment = core.getInput('environment', { required: false });
-        const vpcConfig = core.getInput('vpc-config', { required: false });
-        const deadLetterConfig = core.getInput('dead-letter-config', { required: false });
-        const tracingConfig = core.getInput('tracing-config', { required: false });
-        const layers = core.getInput('layers', { required: false });
-        const fileSystemConfigs = core.getInput('file-system-configs', { required: false });
-        const imageConfig = core.getInput('image-config', { required: false });
-        const snapStart = core.getInput('snap-start', { required: false });
-        const loggingConfig = core.getInput('logging-config', { required: false });
-        const tags = core.getInput('tags', { required: false });
+        core.info(`Creating new Lambda function: ${functionName}`);
+        const command = new CreateFunctionCommand(input);
+        const response = await client.send(command);
         
-        // Parse and validate JSON inputs
-        let parsedEnvironment, parsedVpcConfig, parsedDeadLetterConfig, parsedTracingConfig,
-            parsedLayers, parsedFileSystemConfigs, parsedImageConfig, parsedSnapStart,
-            parsedLoggingConfig, parsedTags;
-
-        try {
-            if (environment) {
-                parsedEnvironment = parseJsonInput(environment, 'environment');
-            }
-            
-            if (vpcConfig) {
-                parsedVpcConfig = parseJsonInput(vpcConfig, 'vpc-config');
-                if (!parsedVpcConfig.SubnetIds || !Array.isArray(parsedVpcConfig.SubnetIds)) {
-                    throw new Error("vpc-config must include 'SubnetIds' as an array");
-                }
-                if (!parsedVpcConfig.SecurityGroupIds || !Array.isArray(parsedVpcConfig.SecurityGroupIds)) {
-                    throw new Error("vpc-config must include 'SecurityGroupIds' as an array");
-                }
-            }
-            
-            if (deadLetterConfig) {
-                parsedDeadLetterConfig = parseJsonInput(deadLetterConfig, 'dead-letter-config');
-                if (!parsedDeadLetterConfig.TargetArn) {
-                    throw new Error("dead-letter-config must include 'TargetArn'");
-                }
-            }
-            
-            if (tracingConfig) {
-                parsedTracingConfig = parseJsonInput(tracingConfig, 'tracing-config');
-                if (!parsedTracingConfig.Mode || !['Active', 'PassThrough'].includes(parsedTracingConfig.Mode)) {
-                    throw new Error("tracing-config Mode must be 'Active' or 'PassThrough'");
-                }
-            }
-            
-            if (layers) {
-                parsedLayers = parseJsonInput(layers, 'layers');
-                if (!Array.isArray(parsedLayers)) {
-                    throw new Error("layers must be an array of layer ARNs");
-                }
-            }
-            
-            if (fileSystemConfigs) {
-                parsedFileSystemConfigs = parseJsonInput(fileSystemConfigs, 'file-system-configs');
-                if (!Array.isArray(parsedFileSystemConfigs)) {
-                    throw new Error("file-system-configs must be an array");
-                }
-                for (const config of parsedFileSystemConfigs) {
-                    if (!config.Arn || !config.LocalMountPath) {
-                        throw new Error("Each file-system-config must include 'Arn' and 'LocalMountPath'");
-                    }
-                }
-            }
-            
-            if (imageConfig) {
-                parsedImageConfig = parseJsonInput(imageConfig, 'image-config');
-            }
-            
-            if (snapStart) {
-                parsedSnapStart = parseJsonInput(snapStart, 'snap-start');
-                if (!parsedSnapStart.ApplyOn || !['PublishedVersions', 'None'].includes(parsedSnapStart.ApplyOn)) {
-                    throw new Error("snap-start ApplyOn must be 'PublishedVersions' or 'None'");
-                }
-            }
-            
-            if (loggingConfig) {
-                parsedLoggingConfig = parseJsonInput(loggingConfig, 'logging-config');
-            }
-            
-            if (tags) {
-                parsedTags = parseJsonInput(tags, 'tags');
-                if (typeof parsedTags !== 'object' || Array.isArray(parsedTags)) {
-                    throw new Error("tags must be an object of key-value pairs");
-                }
-            }
-        } catch (error) {
-            core.setFailed(`Input validation error: ${error.message}`);
-            return;
+        core.setOutput('function-arn', response.FunctionArn);
+        if (response.Version) {
+          core.setOutput('version', response.Version);
         }
-
-        // Get all other inputs
-        const functionDescription = core.getInput('function-description', { required: false });
-        const packageType = 'Zip';
-        const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
-        const publish = core.getBooleanInput('publish', { required: false }) || true;
-        const revisionId = core.getInput('revision-id', { required: false });
-        const runtime = core.getInput('runtime', { required: false }) || 'nodejs';
-        const handler = core.getInput('handler', { required: false });
-        const architectures = core.getInput('architectures', { required: false }) || 'x86_64';
-       
-        const lambda = new LambdaClient({
-            region,
-        });
-    }
-    catch (error) {
-        core.setFailed(`Action failed with error: ${error.message}`);
+      } catch (error) {
+        core.setFailed(`Failed to create function: ${error.message}`);
         if (error.stack) {
-            core.debug(error.stack);
+          core.debug(error.stack);
         }
-    } 
-}
+      }
+      core.info('Lambda function created successfully');
+      return;
+    }
 
-function parseJsonInput(jsonString, inputName) {
+    core.info(`Getting current configuration for function ${functionName}`);
+    const configCommand = new GetFunctionConfigurationCommand({FunctionName: functionName});
+    let currentConfig = await client.send(configCommand);
+
+    const configChanged = hasConfigurationChanged(currentConfig, {
+      Role: role,
+      Handler: handler,
+      Description: functionDescription,
+      ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+      Timeout: timeout,
+      Runtime: runtime,
+      KMSKeyArn: kmsKeyArn,
+      EphemeralStorage: { Size: ephemeralStorage },
+      VpcConfig: vpcConfig ? parsedVpcConfig : undefined,
+      Environment: environment ? parsedEnvironment: undefined,
+      DeadLetterConfig: deadLetterConfig ? parsedDeadLetterConfig : undefined,
+      TracingConfig: tracingConfig ? parsedTracingConfig : undefined,
+      Layers: layers ? parsedLayers : undefined,
+      FileSystemConfigs: fileSystemConfigs ? parsedFileSystemConfigs : undefined,
+      ImageConfig: imageConfig ? parsedImageConfig : undefined,
+      SnapStart: snapStart ? parsedSnapStart : undefined,
+      LoggingConfig: loggingConfig ? parsedLoggingConfig : undefined
+    });
+
+    if (configChanged) {
+      if (dryRun) {
+        core.info('[DRY RUN] Configuration updates are not simulated in dry run mode');
+      } else {
+        try {
+          const input = {
+            FunctionName: functionName,
+            Role: role,
+            Handler: handler,
+            Description: functionDescription,
+            ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+            Timeout: timeout,
+            Runtime: runtime,
+            KMSKeyArn: kmsKeyArn,
+            EphemeralStorage: { Size: ephemeralStorage },
+            VpcConfig: vpcConfig ? parsedVpcConfig : undefined,
+            Environment: environment ? { Variables: parsedEnvironment } : undefined,
+            DeadLetterConfig: deadLetterConfig ? parsedDeadLetterConfig : undefined,
+            TracingConfig: tracingConfig ? parsedTracingConfig : undefined,
+            Layers: layers ? parsedLayers : undefined,
+            FileSystemConfigs: fileSystemConfigs ? parsedFileSystemConfigs : undefined,
+            ImageConfig: imageConfig ? parsedImageConfig : undefined,
+            SnapStart: snapStart ? parsedSnapStart : undefined,
+            LoggingConfig: loggingConfig ? parsedLoggingConfig : undefined
+          };
+
+          core.info(`Updating function configuration for ${functionName}`);
+          const command = new UpdateFunctionConfigurationCommand(input);
+          await client.send(command);
+          await waitForFunctionUpdated(client, functionName);
+        } catch (error) {
+          core.setFailed(`Failed to update function configuration: ${error.message}`);
+          if (error.stack) {
+            core.debug(error.stack);
+          }
+        }
+      }
+    } else {
+      core.info('No configuration changes detected');
+    }
+
+    core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
+    
     try {
-        return JSON.parse(jsonString);
+      if (dryRun) {
+        core.info('DRY RUN MODE: No AWS resources will be created or modified');
+      }
+      
+      let zipFileContent;
+      try {
+        zipFileContent = await fs.readFile(finalZipPath);
+      } catch (error) {
+        if (dryRun) {
+          core.info(`[DRY RUN] Unable to read file ${finalZipPath}, using mock content for simulation`);
+          zipFileContent = Buffer.from('mock zip content for dry run');
+        } else {
+          throw error;
+        }
+      }
+      
+      const codeInput = {
+        FunctionName: functionName,
+        ZipFile: zipFileContent, 
+        Architectures: [architectures],
+        Publish: publish,
+        RevisionId: revisionId,
+        SourceKmsKeyArn: sourceKmsKeyArn,
+      };
+      
+      if (dryRun) {
+        const logInput = {...codeInput};
+        if (logInput.ZipFile) {
+          logInput.ZipFile = '<binary zip data not shown>';
+        }
+        core.info('[DRY RUN] Would update function code with parameters:');
+        core.info(JSON.stringify(logInput, null, 2));
+        
+        const mockArn = `arn:aws:lambda:${region}:000000000000:function:${functionName}`;
+        core.setOutput('function-arn', mockArn);
+        core.setOutput('version', '$LATEST');
+        core.info('[DRY RUN] Function code update simulation completed');
+      } else {
+        const command = new UpdateFunctionCodeCommand(codeInput);
+        const response = await client.send(command);
+        core.setOutput('function-arn', response.FunctionArn);
+        if (response.Version) {
+          core.setOutput('version', response.Version);
+        }
+      }
     } catch (error) {
-        throw new Error(`Invalid JSON in ${inputName} input: ${error.message}`);
+      core.setFailed(`Failed to update function code: ${error.message}`);
+      if (error.stack) {
+        core.debug(error.stack);
+      }
+      return;
     }
-}
 
-function validateRoleArn(arn) {
-    const rolePattern = /^arn:aws(-[a-z0-9-]+)?:iam::[0-9]{12}:role\/[a-zA-Z0-9+=,.@_\/-]+$/;
+    core.info('Lambda function deployment completed successfully');
     
-    if (!rolePattern.test(arn)) {
-        core.setFailed(`Invalid IAM role ARN format: ${arn}`);
-        return false;
+  }
+  catch (error) {
+    if (error.name === 'ThrottlingException') {
+      core.warning('AWS throttling detected, consider retrying with exponential backoff');
+    } else if (error.name === 'AccessDeniedException') {
+      core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
+    } else {
+      core.setFailed(`Action failed with error: ${error.message}`);
     }
-    return true;
-}
-
-function validateCodeSigningConfigArn(arn) {
-    const cscPattern = /^arn:aws(-[a-z0-9-]+)?:lambda:[a-z0-9-]+:[0-9]{12}:code-signing-config:[a-zA-Z0-9-]+$/;
-
-    if (!cscPattern.test(arn)) {
-        core.setFailed(`Invalid code signing config ARN format: ${arn}`);
-        return false;
+    if (error.stack) {
+      core.debug(error.stack);
     }
-    return true;
-}
-
-function validateKmsKeyArn(arn) {
-    const kmsPattern = /^arn:aws(-[a-z0-9-]+)?:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-zA-Z0-9-]+$/;
-    
-    if (!kmsPattern.test(arn)) {
-        core.setFailed(`Invalid KMS key ARN format: ${arn}`);
-        return false;
-    }
-    return true;
+  } 
 }
 
 async function packageCodeArtifacts(artifactsDir) {
-    const tempDir = path.join(process.cwd(), 'lambda-package');
-    const zipPath = path.join(process.cwd(), 'lambda-function.zip');
+  const tempDir = path.join(process.cwd(), 'lambda-package');
+  const zipPath = path.join(process.cwd(), 'lambda-function.zip');
 
+  try {
     try {
-        fs.mkdirSync(tempDir, { recursive: true });
-
-        core.info(`Copying artifacts from ${artifactsDir} to ${tempDir}`);
-        await exec(`cp -r ${artifactsDir}/* ${tempDir}/`);
-
-        core.info('Creating ZIP file');
-        await exec(`cd ${tempDir} && zip -r ${zipPath} .`);
-        
-        return zipPath;
+      await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
-        core.error(`Failed to package artifacts: ${error.message}`);
-        throw error;
     }
+    
+    await fs.mkdir(tempDir, { recursive: true });
+
+    core.info(`Copying artifacts from ${artifactsDir} to ${tempDir}`);
+    
+    const files = await fs.readdir(artifactsDir);
+    
+    for (const file of files) {
+      await fs.cp(
+        path.join(artifactsDir, file),
+        path.join(tempDir, file),
+        { recursive: true }
+      );
+    }
+
+    core.info('Creating ZIP file');
+    const zip = new AdmZip();
+    zip.addLocalFolder(tempDir);
+    zip.writeZip(zipPath);
+    
+    return zipPath;
+  } catch (error) {
+    core.error(`Failed to package artifacts: ${error.message}`);
+    throw error;
+  }
+}
+
+async function checkFunctionExists(client, functionName) {
+  try {
+    const input = {
+      FunctionName: functionName
+    };
+    const command = new GetFunctionCommand(input);
+    const response = await client.send(command);
+    return true;
+  } catch (error) {
+    if (error.name === 'ResourceNotFoundException') {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function hasConfigurationChanged(currentConfig, updatedConfig) {
+  if (!currentConfig || Object.keys(currentConfig).length === 0) {
+    return true;
+  }
+
+  const current = currentConfig;
+  
+  for (const [key, value] of Object.entries(updatedConfig)) {
+    if (value !== undefined && value !== null) {
+      if (typeof value === 'object') {
+        if (JSON.stringify(value) !== JSON.stringify(current[key])) {
+          core.info(`Configuration difference detected in ${key}`);
+          return true;
+        }
+      } else if (current[key] !== value) {
+        core.info(`Configuration difference detected in ${key}: ${current[key]} -> ${value}`);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+async function waitForFunctionUpdated(client, functionName) {
+  core.info('Waiting for function update to complete');
+  
+  const maxRetries = 10;
+  const retryDelay = 2000; 
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const params = { 
+        FunctionName: functionName 
+      };
+      
+      const command = new GetFunctionConfigurationCommand(params);
+      const response = await client.send(command);
+      
+      if (response.State === 'Active' || response.LastUpdateStatus === 'Successful') {
+        core.info('Function update completed successfully');
+        return;
+      }
+      
+      if (response.State === 'Failed' || response.LastUpdateStatus === 'Failed') {
+        throw new Error(`Function update failed: ${response.LastUpdateStatusReason || 'No reason provided'}`);
+      }
+      
+      core.info(`Function update in progress, waiting... (${i+1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    } catch (error) {
+      if (error.code === 'ResourceNotFoundException') {
+        throw error; 
+      }
+      
+      core.warning(`Error checking function status: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+  }
+  
+  throw new Error('Timed out waiting for function update to complete');
 }
 
 if (require.main === module) {
-    run();
+  run();
 }
 
 module.exports = {
-    run,
-    packageCodeArtifacts,
-    parseJsonInput,
-    validateRoleArn,
-    validateCodeSigningConfigArn,
-    validateKmsKeyArn
+  run,
+  packageCodeArtifacts,
+  checkFunctionExists,
+  hasConfigurationChanged,
+  waitForFunctionUpdated
 };
-

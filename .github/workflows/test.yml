@@ -1,0 +1,29 @@
+name: Deploy AWS Lambda Function
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+       
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+       
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeployRole
+          aws-region: us-west-2
+    
+      - name: Deploy Lambda
+        uses: aws-actions/aws-lambda-deploy@v1
+        with:
+          function-name: my-node-lambda
+          code-artifacts-dir: ./dist
+          memory-size: 256
+          publish: true
