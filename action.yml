@@ -20,6 +20,7 @@ inputs:
   dry-run:
     description: 'Set true to validate the request parameters and access permissions without modifying the function code. Applicable for updating function code only.'
     required: false
+    default: 'true'
   revision-id: 
     description: 'Update the function only if the revision ID matches the ID that is specified.'
     required: false
