@@ -23,7 +23,7 @@ jobs:
       - name: Deploy Lambda
         uses: aws-actions/aws-lambda-deploy@v1
         with:
-          function-name: my-node-lambda
-          code-artifacts-dir: ./dist
+          function-name: test-lambda
+          zip-file-path: ./lambda-example
           memory-size: 256
           publish: true

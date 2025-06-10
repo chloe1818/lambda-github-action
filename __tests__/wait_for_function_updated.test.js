@@ -1,14 +1,18 @@
 const { waitForFunctionUpdated } = require('../index');
 const core = require('@actions/core');
-const { GetFunctionConfigurationCommand } = require('@aws-sdk/client-lambda');
+const { GetFunctionConfigurationCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 
 // Mock dependencies
 jest.mock('@actions/core');
-jest.mock('@aws-sdk/client-lambda');
+jest.mock('@aws-sdk/client-lambda', () => {
+  return {
+    GetFunctionConfigurationCommand: jest.fn(),
+    waitUntilFunctionUpdated: jest.fn()
+  };
+});
 
 describe('waitForFunctionUpdated function', () => {
   let mockLambdaClient;
-  let mockSend;
 
   // Using a higher timeout for the entire test suite
   jest.setTimeout(60000);
@@ -24,230 +28,117 @@ describe('waitForFunctionUpdated function', () => {
     core.info = jest.fn();
     core.warning = jest.fn();
     
-    // Mock client send function
-    mockSend = jest.fn();
-    mockLambdaClient = {
-      send: mockSend
-    };
+    // Mock client for passing to waiters
+    mockLambdaClient = {};
     
-    // Mock GetFunctionConfigurationCommand constructor
-    GetFunctionConfigurationCommand.mockImplementation((params) => ({
-      ...params,
-      type: 'GetFunctionConfigurationCommand'
-    }));
+    // Reset mocks for waitUntilFunctionUpdated
+    waitUntilFunctionUpdated.mockReset();
   });
 
   it('should resolve when function update completes successfully', async () => {
-    // Mock successful function update
-    mockSend.mockResolvedValue({
-      State: 'Active',
-      LastUpdateStatus: 'Successful'
-    });
+    // Mock successful function waiter
+    waitUntilFunctionUpdated.mockResolvedValue({});
     
     // Create a promise that will resolve when waitForFunctionUpdated resolves
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function')).resolves.toBeUndefined();
     
     // Check the results
-    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
-      FunctionName: 'test-function',
-      type: 'GetFunctionConfigurationCommand'
-    }));
+    expect(waitUntilFunctionUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: mockLambdaClient,
+        minDelay: 2,
+        maxWaitTime: 5 * 60 // 5 minutes in seconds
+      }),
+      expect.objectContaining({
+        FunctionName: 'test-function'
+      })
+    );
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update completed successfully'));
   });
 
-  it('should poll until the function update completes', async () => {
-    // Mock in-progress then successful function update
-    mockSend
-      .mockResolvedValueOnce({
-        State: 'Updating',
-        LastUpdateStatus: 'InProgress'
-      })
-      .mockResolvedValueOnce({
-        State: 'Updating',
-        LastUpdateStatus: 'InProgress'
-      })
-      .mockResolvedValueOnce({
-        State: 'Active',
-        LastUpdateStatus: 'Successful'
-      });
+  it('should use custom wait time when specified', async () => {
+    // Mock successful function waiter
+    waitUntilFunctionUpdated.mockResolvedValue({});
     
-    // Execute the test with real async behavior (no fake timers)
-    await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function')).resolves.toBeUndefined();
+    const customWaitMinutes = 10;
     
-    // Check the results
-    expect(mockSend).toHaveBeenCalledTimes(3);
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update in progress, waiting...'));
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update completed successfully'));
+    // Execute the test with custom wait time
+    await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function', customWaitMinutes)).resolves.toBeUndefined();
+    
+    // Check that the waiter was called with the correct wait time
+    expect(waitUntilFunctionUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: mockLambdaClient,
+        minDelay: 2,
+        maxWaitTime: customWaitMinutes * 60 // Convert to seconds
+      }),
+      expect.objectContaining({
+        FunctionName: 'test-function'
+      })
+    );
   });
 
-  it('should throw an error when function update fails', async () => {
-    // For this test, we'll create our own implementation similar to the timeout test
-    // Create a patched version for testing
-    const patchedWaitForFunction = async (client, functionName) => {
-      try {
-        // This will be our mocked response
-        const response = await client.send({
-          FunctionName: functionName,
-          type: 'GetFunctionConfigurationCommand'
-        });
-        
-        // Check for failure - this should trigger immediately
-        if (response.State === 'Failed' || response.LastUpdateStatus === 'Failed') {
-          throw new Error(`Function update failed: ${response.LastUpdateStatusReason || 'No reason provided'}`);
-        }
-        
-        return;
-      } catch (error) {
-        // Rethrow any errors
-        throw error;
-      }
-    };
+  it('should handle waiter TimeoutError', async () => {
+    // Mock a timeout error from the waiter
+    const timeoutError = new Error('Waiter timed out');
+    timeoutError.name = 'TimeoutError';
+    waitUntilFunctionUpdated.mockRejectedValue(timeoutError);
     
-    // Setup our mock to return a failed state
-    mockSend.mockResolvedValue({
-      State: 'Failed',
-      LastUpdateStatus: 'Failed',
-      LastUpdateStatusReason: 'Resource limit exceeded'
-    });
-    
-    // Check the results using our patched function
-    await expect(patchedWaitForFunction(mockLambdaClient, 'test-function'))
-      .rejects.toThrow('Function update failed: Resource limit exceeded');
-    expect(mockSend).toHaveBeenCalledTimes(1);
-  });
-
-  it('should throw an error when function update fails with no reason', async () => {
-    // For this test, we'll create our own implementation similar to the timeout test
-    // Create a patched version for testing
-    const patchedWaitForFunction = async (client, functionName) => {
-      try {
-        // This will be our mocked response
-        const response = await client.send({
-          FunctionName: functionName,
-          type: 'GetFunctionConfigurationCommand'
-        });
-        
-        // Check for failure - this should trigger immediately
-        if (response.State === 'Failed' || response.LastUpdateStatus === 'Failed') {
-          throw new Error(`Function update failed: ${response.LastUpdateStatusReason || 'No reason provided'}`);
-        }
-        
-        return;
-      } catch (error) {
-        // Rethrow any errors
-        throw error;
-      }
-    };
-    
-    // Setup our mock to return a failed state with no reason
-    mockSend.mockResolvedValue({
-      State: 'Failed',
-      LastUpdateStatus: 'Failed'
-      // No LastUpdateStatusReason provided
-    });
-    
-    // Check the results using our patched function
-    await expect(patchedWaitForFunction(mockLambdaClient, 'test-function'))
-      .rejects.toThrow('Function update failed: No reason provided');
-    expect(mockSend).toHaveBeenCalledTimes(1);
+    // Check that our function correctly handles and transforms the error
+    await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
+      .rejects.toThrow('Timed out waiting for function test-function update to complete after 5 minutes');
   });
 
   it('should handle ResourceNotFoundException error', async () => {
-    // Mock ResourceNotFoundException
-    const error = new Error('Function not found');
-    error.code = 'ResourceNotFoundException';
-    mockSend.mockRejectedValue(error);
+    // Mock a ResourceNotFoundException from the waiter
+    const notFoundError = new Error('Function not found');
+    notFoundError.name = 'ResourceNotFoundException';
+    waitUntilFunctionUpdated.mockRejectedValue(notFoundError);
     
-    // Check the results
+    // Check that our function correctly handles and transforms the error
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
-      .rejects.toThrow('Function not found');
-    expect(mockSend).toHaveBeenCalledTimes(1);
+      .rejects.toThrow('Function test-function not found');
   });
 
-  it('should handle other errors and continue retrying', async () => {
-    // Mock temporary error then success
-    const error = new Error('Temporary error');
-    error.code = 'InternalServiceError';
+  it('should handle permission denied errors', async () => {
+    // Mock a permission denied error from the waiter
+    const permissionError = new Error('Permission denied');
+    permissionError.$metadata = { httpStatusCode: 403 };
+    waitUntilFunctionUpdated.mockRejectedValue(permissionError);
     
-    mockSend
-      .mockRejectedValueOnce(error)
-      .mockResolvedValueOnce({
-        State: 'Active',
-        LastUpdateStatus: 'Successful'
-      });
-    
-    // Check the results
+    // Check that our function correctly handles and transforms the error
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
-      .resolves.toBeUndefined();
-    expect(mockSend).toHaveBeenCalledTimes(2);
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Error checking function status'));
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update completed successfully'));
+      .rejects.toThrow('Permission denied while checking function test-function status');
   });
 
-  it('should timeout after max retries', async () => {
-    // For this test, we'll patch the actual function by using a custom implementation
-    // First, create a patched version of the module function
-    // We need to modify the retryDelay and maxRetries to make the test run faster
+  it('should handle other errors with appropriate message', async () => {
+    // Mock a general error from the waiter
+    const generalError = new Error('Something went wrong');
+    waitUntilFunctionUpdated.mockRejectedValue(generalError);
     
-    // Save original implementation 
-    const originalWaitForFunctionUpdated = waitForFunctionUpdated;
+    // Check that our function logs a warning and rethrows with enhanced message
+    await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
+      .rejects.toThrow('Error waiting for function test-function update: Something went wrong');
     
-    // Create a patched version for testing
-    const patchedWaitForFunction = async (client, functionName) => {
-      // Our test will use a maximum of 3 retries only
-      const MAX_RETRIES = 3;
-      
-      for (let i = 0; i < MAX_RETRIES; i++) {
-        // Log the retry attempt
-        core.info(`Function update in progress, waiting... (${i+1}/${MAX_RETRIES})`);
-        
-        try {
-          // This will always be our mocked response
-          const response = await client.send({
-            FunctionName: functionName,
-            type: 'GetFunctionConfigurationCommand'
-          });
-          
-          // Check response status - since we're mocking responses, this branch will be determined
-          // by what we've set up in mockSend
-          if (response.State === 'Active' || response.LastUpdateStatus === 'Successful') {
-            core.info('Function update completed successfully');
-            return;
-          }
-          
-          if (response.State === 'Failed' || response.LastUpdateStatus === 'Failed') {
-            throw new Error(`Function update failed: ${response.LastUpdateStatusReason || 'No reason provided'}`);
-          }
-          
-          // Short delay for test
-          await new Promise(resolve => setTimeout(resolve, 10));
-          
-        } catch (error) {
-          if (error.code === 'ResourceNotFoundException') {
-            throw error;
-          }
-          
-          core.warning(`Error checking function status: ${error.message}`);
-        }
-      }
-      
-      throw new Error('Timed out waiting for function update to complete');
-    };
+    expect(core.warning).toHaveBeenCalledWith('Function update check error: Something went wrong');
+  });
+
+  it('should cap wait time to maximum allowed', async () => {
+    // Mock successful function waiter
+    waitUntilFunctionUpdated.mockResolvedValue({});
     
-    // Always return in-progress status to trigger timeout
-    mockSend.mockImplementation(() => {
-      return Promise.resolve({
-        State: 'Updating',
-        LastUpdateStatus: 'InProgress'
-      });
-    });
+    // Try with a wait time that exceeds the maximum
+    const excessiveWaitMinutes = 100; // Much higher than the 30 minute cap
     
-    // Now test our patched function
-    await expect(patchedWaitForFunction(mockLambdaClient, 'test-function'))
-      .rejects.toThrow('Timed out waiting for function update to complete');
+    await waitForFunctionUpdated(mockLambdaClient, 'test-function', excessiveWaitMinutes);
     
-    // Check that we called the API the right number of times
-    expect(mockSend).toHaveBeenCalledTimes(3);
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update in progress, waiting... (3/3)'));
+    // Verify the wait time was capped
+    expect(core.info).toHaveBeenCalledWith('Wait time capped to maximum of 30 minutes');
+    expect(waitUntilFunctionUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxWaitTime: 30 * 60 // 30 minutes in seconds (the cap)
+      }),
+      expect.any(Object)
+    );
   });
 });

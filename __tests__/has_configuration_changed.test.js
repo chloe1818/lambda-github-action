@@ -1,8 +1,83 @@
-const { hasConfigurationChanged } = require('../index');
+const { hasConfigurationChanged, cleanNullKeys, isEmptyValue } = require('../index');
 const core = require('@actions/core');
 
 // Mock dependencies
 jest.mock('@actions/core');
+
+describe('isEmptyValue function', () => {
+  test('should correctly identify empty values', () => {
+    expect(isEmptyValue(null)).toBe(true);
+    expect(isEmptyValue(undefined)).toBe(true);
+    expect(isEmptyValue('')).toBe(true);
+    expect(isEmptyValue([])).toBe(true);
+    expect(isEmptyValue({})).toBe(true);
+  });
+  
+  test('should identify non-empty values', () => {
+    expect(isEmptyValue('value')).toBe(false);
+    expect(isEmptyValue(0)).toBe(false);
+    expect(isEmptyValue(false)).toBe(false);
+    expect(isEmptyValue(['item'])).toBe(false);
+    expect(isEmptyValue({ key: 'value' })).toBe(false);
+  });
+  
+  test('should handle nested structures', () => {
+    expect(isEmptyValue([null, undefined, ''])).toBe(true);
+    expect(isEmptyValue({ a: null, b: undefined, c: '' })).toBe(true);
+    expect(isEmptyValue([null, 'value', undefined])).toBe(false);
+    expect(isEmptyValue({ a: null, b: 'value', c: undefined })).toBe(false);
+  });
+});
+
+describe('cleanNullKeys function', () => {
+  test('should remove null and undefined values from objects', () => {
+    const input = {
+      validProp: 'value',
+      nullProp: null,
+      undefinedProp: undefined,
+      emptyString: ''
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      validProp: 'value'
+    });
+  });
+  
+  test('should filter empty values from arrays', () => {
+    const input = {
+      array: [1, null, 2, undefined, '', 3]
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      array: [1, 2, 3]
+    });
+  });
+  
+  test('should handle nested objects and arrays', () => {
+    const input = {
+      nested: {
+        validProp: 'value',
+        nullProp: null,
+        array: [1, null, '']
+      },
+      emptyArray: [null, undefined, ''],
+      emptyObject: { a: null, b: undefined, c: '' }
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      nested: {
+        validProp: 'value',
+        array: [1]
+      }
+    });
+  });
+});
 
 describe('hasConfigurationChanged function', () => {
   beforeEach(() => {
@@ -128,6 +203,7 @@ describe('hasConfigurationChanged function', () => {
     // Only Handler should be detected as a change
     expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in MemorySize'));
     expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Timeout'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Handler'));
   });
 
   test('should handle complex nested objects', async () => {
@@ -163,7 +239,7 @@ describe('hasConfigurationChanged function', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in VpcConfig'));
   });
-
+  
   test('should return false when no meaningful changes exist', async () => {
     const current = {
       Runtime: 'nodejs18.x',
@@ -192,5 +268,136 @@ describe('hasConfigurationChanged function', () => {
     
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(false);
+  });
+
+  // New tests for enhanced empty value handling
+  
+  test('should handle empty arrays properly', async () => {
+    const current = {
+      Layers: ['arn:aws:lambda:us-east-1:123456789012:layer:layer1:1']
+    };
+    
+    const updated = {
+      Layers: [] // Empty array
+    };
+    
+    // With the new implementation, empty arrays should be removed by cleanNullKeys
+    // so this shouldn't trigger a change detection (empty array considered same as not provided)
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(false);
+  });
+  
+  test('should handle arrays with empty values', async () => {
+    const current = {
+      Layers: ['layer1', 'layer2', 'layer3']
+    };
+    
+    const updated = {
+      Layers: ['layer1', null, 'layer3', undefined, ''] // Array with empty values
+    };
+    
+    // The cleaned array should be ['layer1', 'layer3'] which is different from the current
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Layers'));
+  });
+  
+  test('should handle empty objects properly', async () => {
+    const current = {
+      Environment: {
+        Variables: {
+          ENV: 'dev'
+        }
+      }
+    };
+    
+    const updated = {
+      Environment: {} // Empty object
+    };
+    
+    // Empty objects should be removed by cleanNullKeys, so this shouldn't trigger a change
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(false);
+  });
+  
+  test('should handle objects with empty nested properties', async () => {
+    const current = {
+      Environment: {
+        Variables: {
+          ENV: 'dev',
+          DEBUG: 'true'
+        }
+      }
+    };
+    
+    const updated = {
+      Environment: {
+        Variables: {
+          ENV: 'dev',
+          DEBUG: 'true',
+          EMPTY_ARRAY: [],
+          EMPTY_OBJECT: {},
+          NULL_VALUE: null
+        }
+      }
+    };
+    
+    // After cleaning, all empty properties should be removed, making the objects equivalent
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(false);
+  });
+  
+  test('should detect changes when empty values are replaced with real values', async () => {
+    const current = {
+      Environment: {
+        Variables: {
+          ENV: 'dev',
+          DEBUG: '',  // Empty string
+          LOG_LEVEL: null // Null value
+        }
+      }
+    };
+    
+    const updated = {
+      Environment: {
+        Variables: {
+          ENV: 'dev',
+          DEBUG: 'true', // Now has a value
+          LOG_LEVEL: 'info' // Now has a value
+        }
+      }
+    };
+    
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Environment'));
+  });
+  
+  test('should handle zero as a valid non-empty value', async () => {
+    const current = {
+      RetryAttempts: 3
+    };
+    
+    const updated = {
+      RetryAttempts: 0 // Zero is a valid value, not "empty"
+    };
+    
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in RetryAttempts'));
+  });
+  
+  test('should handle false as a valid non-empty value', async () => {
+    const current = {
+      CacheEnabled: true
+    };
+    
+    const updated = {
+      CacheEnabled: false // False is a valid value, not "empty"
+    };
+    
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in CacheEnabled'));
   });
 });

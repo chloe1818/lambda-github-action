@@ -1,5 +1,5 @@
 const core = require('@actions/core');
-const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand } = require('@aws-sdk/client-lambda');
+const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -36,7 +36,7 @@ async function run() {
     }
 
     const client = new LambdaClient({
-      region,
+      region
     });
 
     core.info(`Checking if ${functionName} exists`);
@@ -57,7 +57,7 @@ async function run() {
 
       // Create function
       try {
-        const input = {
+        let input = {
           FunctionName: functionName,
           Runtime: runtime,
           Role: role,
@@ -66,27 +66,29 @@ async function run() {
             ZipFile: await fs.readFile(finalZipPath)
           },
           Description: functionDescription,
-          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+          MemorySize: parsedMemorySize,
           Timeout: timeout,
           PackageType: packageType,
           Publish: publish,
-          Architectures: [architectures],
+          Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
           EphemeralStorage: { Size: ephemeralStorage },
-          ...(revisionId && { RevisionId: revisionId }),
-          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          ...(environment && { Environment: { Variables: parsedEnvironment } }),
-          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
-          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
-          ...(layers && { Layers: parsedLayers }),
-          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
-          ...(imageConfig && { ImageConfig: parsedImageConfig }),
-          ...(snapStart && { SnapStart: parsedSnapStart }),
-          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig }),
-          ...(tags && { Tags: parsedTags }),
-          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
-          ...(codeSigningConfigArn && { CodeSigningConfigArn: codeSigningConfigArn }),
-          ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
+          RevisionId: revisionId,
+          VpcConfig: parsedVpcConfig,
+          Environment: environment ? { Variables: parsedEnvironment } : undefined,
+          DeadLetterConfig: parsedDeadLetterConfig,
+          TracingConfig: parsedTracingConfig,
+          Layers: parsedLayers,
+          FileSystemConfigs: parsedFileSystemConfigs,
+          ImageConfig: parsedImageConfig,
+          SnapStart: parsedSnapStart,
+          LoggingConfig: parsedLoggingConfig,
+          Tags: parsedTags,
+          KMSKeyArn: kmsKeyArn,
+          CodeSigningConfigArn: codeSigningConfigArn,
+          SourceKmsKeyArn: sourceKmsKeyArn
         };
+        
+        input = cleanNullKeys(input);
 
         core.info(`Creating new Lambda function: ${functionName}`);
         const command = new CreateFunctionCommand(input);
@@ -135,26 +137,28 @@ async function run() {
         core.info('[DRY RUN] Configuration updates are not simulated in dry run mode');
       } else {
         try {
-          const input = {
+          let input = {
             FunctionName: functionName,
             Role: role,
             Handler: handler,
             Description: functionDescription,
-            ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+            MemorySize: parsedMemorySize,
             Timeout: timeout,
             Runtime: runtime,
             KMSKeyArn: kmsKeyArn,
             EphemeralStorage: { Size: ephemeralStorage },
-            VpcConfig: vpcConfig ? parsedVpcConfig : undefined,
+            VpcConfig: parsedVpcConfig,
             Environment: environment ? { Variables: parsedEnvironment } : undefined,
-            DeadLetterConfig: deadLetterConfig ? parsedDeadLetterConfig : undefined,
-            TracingConfig: tracingConfig ? parsedTracingConfig : undefined,
-            Layers: layers ? parsedLayers : undefined,
-            FileSystemConfigs: fileSystemConfigs ? parsedFileSystemConfigs : undefined,
-            ImageConfig: imageConfig ? parsedImageConfig : undefined,
-            SnapStart: snapStart ? parsedSnapStart : undefined,
-            LoggingConfig: loggingConfig ? parsedLoggingConfig : undefined
+            DeadLetterConfig: parsedDeadLetterConfig,
+            TracingConfig: parsedTracingConfig,
+            Layers: parsedLayers,
+            FileSystemConfigs: parsedFileSystemConfigs,
+            ImageConfig: parsedImageConfig,
+            SnapStart: parsedSnapStart,
+            LoggingConfig: parsedLoggingConfig
           };
+          
+          input = cleanNullKeys(input);
 
           core.info(`Updating function configuration for ${functionName}`);
           const command = new UpdateFunctionConfigurationCommand(input);
@@ -190,14 +194,16 @@ async function run() {
         }
       }
       
-      const codeInput = {
+      let codeInput = {
         FunctionName: functionName,
         ZipFile: zipFileContent, 
-        Architectures: [architectures],
+        Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
         SourceKmsKeyArn: sourceKmsKeyArn,
       };
+      
+      codeInput = cleanNullKeys(codeInput);
       
       if (dryRun) {
         const logInput = {...codeInput};
@@ -231,8 +237,10 @@ async function run() {
     
   }
   catch (error) {
-    if (error.name === 'ThrottlingException') {
-      core.warning('AWS throttling detected, consider retrying with exponential backoff');
+    if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
+      core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
+    } else if (error.$metadata?.httpStatusCode >= 500) {
+      core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
     } else if (error.name === 'AccessDeniedException') {
       core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
     } else {
@@ -241,7 +249,7 @@ async function run() {
     if (error.stack) {
       core.debug(error.stack);
     }
-  } 
+  }
 }
 
 async function packageCodeArtifacts(artifactsDir) {
@@ -300,18 +308,22 @@ async function hasConfigurationChanged(currentConfig, updatedConfig) {
   if (!currentConfig || Object.keys(currentConfig).length === 0) {
     return true;
   }
-
-  const current = currentConfig;
   
-  for (const [key, value] of Object.entries(updatedConfig)) {
-    if (value !== undefined && value !== null) {
+  const cleanedCurrent = cleanNullKeys(currentConfig);
+  const cleanedUpdated = cleanNullKeys(updatedConfig);
+  
+  for (const [key, value] of Object.entries(cleanedUpdated)) {
+    if (value !== undefined) {
       if (typeof value === 'object') {
-        if (JSON.stringify(value) !== JSON.stringify(current[key])) {
+        const currentStr = JSON.stringify(cleanedCurrent[key] || {});
+        const updatedStr = JSON.stringify(value);
+        
+        if (currentStr !== updatedStr) {
           core.info(`Configuration difference detected in ${key}`);
           return true;
         }
-      } else if (current[key] !== value) {
-        core.info(`Configuration difference detected in ${key}: ${current[key]} -> ${value}`);
+      } else if (cleanedCurrent[key] !== value) {
+        core.info(`Configuration difference detected in ${key}: ${cleanedCurrent[key]} -> ${value}`);
         return true;
       }
     }
@@ -320,43 +332,94 @@ async function hasConfigurationChanged(currentConfig, updatedConfig) {
   return false;
 }
 
-async function waitForFunctionUpdated(client, functionName) {
-  core.info('Waiting for function update to complete');
+async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) {
+  const MAX_WAIT_MINUTES = 30;
   
-  const maxRetries = 10;
-  const retryDelay = 2000; 
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const params = { 
-        FunctionName: functionName 
-      };
-      
-      const command = new GetFunctionConfigurationCommand(params);
-      const response = await client.send(command);
-      
-      if (response.State === 'Active' || response.LastUpdateStatus === 'Successful') {
-        core.info('Function update completed successfully');
-        return;
-      }
-      
-      if (response.State === 'Failed' || response.LastUpdateStatus === 'Failed') {
-        throw new Error(`Function update failed: ${response.LastUpdateStatusReason || 'No reason provided'}`);
-      }
-      
-      core.info(`Function update in progress, waiting... (${i+1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-    } catch (error) {
-      if (error.code === 'ResourceNotFoundException') {
-        throw error; 
-      }
-      
-      core.warning(`Error checking function status: ${error.message}`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-    }
+  if (waitForMinutes > MAX_WAIT_MINUTES) {
+    waitForMinutes = MAX_WAIT_MINUTES;
+    core.info(`Wait time capped to maximum of ${MAX_WAIT_MINUTES} minutes`);
   }
   
-  throw new Error('Timed out waiting for function update to complete');
+  core.info(`Waiting for function update to complete. Will wait for ${waitForMinutes} minutes`);
+  
+  try {
+    await waitUntilFunctionUpdated({
+      client: client,
+      minDelay: 2, 
+      maxWaitTime: waitForMinutes * 60, 
+    }, {
+      FunctionName: functionName
+    });
+    
+    core.info('Function update completed successfully');
+  } catch (error) {
+    if (error.name === 'TimeoutError') {
+      throw new Error(`Timed out waiting for function ${functionName} update to complete after ${waitForMinutes} minutes`);
+    } else if (error.name === 'ResourceNotFoundException') {
+      throw new Error(`Function ${functionName} not found`);
+    } else if (error.$metadata && error.$metadata.httpStatusCode === 403) {
+      throw new Error(`Permission denied while checking function ${functionName} status`);
+    } else {
+      core.warning(`Function update check error: ${error.message}`);
+      throw new Error(`Error waiting for function ${functionName} update: ${error.message}`);
+    }
+  }
+}
+
+function isEmptyValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    for (var element of value) {
+      if (!isEmptyValue(element)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (typeof value === 'object') {
+    for (var childValue of Object.values(value)) {
+      if (!isEmptyValue(childValue)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function emptyValueReplacer(_, value) {
+  if (isEmptyValue(value)) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter(e => !isEmptyValue(e));
+  }
+
+  return value;
+}
+
+function cleanNullKeys(obj) {
+  if (!obj) return obj;
+  
+  const stringified = JSON.stringify(obj, emptyValueReplacer);
+  
+  // Handle the case where everything was removed
+  if (stringified === undefined || stringified === 'undefined' || stringified === 'null') {
+    return Array.isArray(obj) ? [] : {};
+  }
+  
+  try {
+    return JSON.parse(stringified);
+  } catch (error) {
+    core.debug(`Error parsing cleaned object: ${error.message}`);
+    return Array.isArray(obj) ? [] : {};
+  }
 }
 
 if (require.main === module) {
@@ -368,5 +431,8 @@ module.exports = {
   packageCodeArtifacts,
   checkFunctionExists,
   hasConfigurationChanged,
-  waitForFunctionUpdated
+  waitForFunctionUpdated,
+  isEmptyValue,
+  emptyValueReplacer,
+  cleanNullKeys
 };

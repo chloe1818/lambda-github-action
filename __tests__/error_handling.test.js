@@ -43,10 +43,15 @@ describe('Error handling tests', () => {
     fs.readFile.mockResolvedValue(Buffer.from('mock zip content'));
   });
 
-  test('should handle ThrottlingException', async () => {
-    // Setup LambdaClient to throw a ThrottlingException
+  test('should handle ThrottlingException with retries exhausted', async () => {
+    // Setup LambdaClient to throw a ThrottlingException with metadata
     const throttlingError = new Error('Rate exceeded');
     throttlingError.name = 'ThrottlingException';
+    throttlingError.$metadata = {
+      httpStatusCode: 429,
+      attempts: 3, // Initial request + 2 retries
+      totalRetryDelay: 350 // Example total delay across retries
+    };
     
     // Mock the LambdaClient constructor and send method
     LambdaClient.prototype.send = jest.fn().mockRejectedValue(throttlingError);
@@ -54,14 +59,62 @@ describe('Error handling tests', () => {
     // Execute the run function
     await run();
     
-    // Verify the warning was logged
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('AWS throttling detected'));
+    // Verify the proper failure message was set
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Rate limit exceeded and maximum retries reached:')
+    );
+  });
+
+  test('should handle TooManyRequestsException with retries exhausted', async () => {
+    // Setup LambdaClient to throw a TooManyRequestsException with metadata
+    const tooManyRequestsError = new Error('Too many requests');
+    tooManyRequestsError.name = 'TooManyRequestsException';
+    tooManyRequestsError.$metadata = {
+      httpStatusCode: 429,
+      attempts: 3 // Initial request + 2 retries
+    };
+    
+    // Mock the LambdaClient constructor and send method
+    LambdaClient.prototype.send = jest.fn().mockRejectedValue(tooManyRequestsError);
+    
+    // Execute the run function
+    await run();
+    
+    // Verify the proper failure message was set
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Rate limit exceeded and maximum retries reached:')
+    );
+  });
+
+  test('should handle server errors (HTTP 5xx) with retries exhausted', async () => {
+    // Setup LambdaClient to throw a server error with metadata
+    const serverError = new Error('Internal server error');
+    serverError.name = 'InternalFailure';
+    serverError.$metadata = {
+      httpStatusCode: 500,
+      attempts: 3 // Initial request + 2 retries
+    };
+    
+    // Mock the LambdaClient constructor and send method
+    LambdaClient.prototype.send = jest.fn().mockRejectedValue(serverError);
+    
+    // Execute the run function
+    await run();
+    
+    // Verify the proper failure message was set
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Server error (500): Internal server error. All retry attempts failed.')
+    );
   });
 
   test('should handle AccessDeniedException', async () => {
     // Setup LambdaClient to throw an AccessDeniedException
     const accessError = new Error('User is not authorized to perform: lambda:GetFunction');
     accessError.name = 'AccessDeniedException';
+    accessError.$metadata = {
+      httpStatusCode: 403,
+      attempts: 1 // No retries for client errors
+    };
     
     // Mock the LambdaClient constructor and send method
     LambdaClient.prototype.send = jest.fn().mockRejectedValue(accessError);
@@ -211,5 +264,28 @@ describe('Error handling tests', () => {
     // Verify the error was logged
     expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Failed to update function code:'));
     expect(core.debug).toHaveBeenCalledWith('Code update error stack trace');
+  });
+  
+  test('should verify default retry strategy handles errors properly', async () => {
+    // Force an error to verify retry strategy configuration
+    const serverError = new Error('Service unavailable');
+    serverError.$metadata = { httpStatusCode: 503 };
+    
+    // Mock the LambdaClient constructor and send method
+    LambdaClient.prototype.send = jest.fn().mockRejectedValue(serverError);
+    
+    // Execute the run function
+    await run();
+    
+    // Verify the proper error message was set
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Server error (503): Service unavailable')
+    );
+    
+    // When using the default AWS SDK retry strategy, we should still see
+    // the Lambda client being initialized with the region parameter
+    expect(LambdaClient).toHaveBeenCalledWith(expect.objectContaining({
+      region: 'us-east-1'
+    }));
   });
 });

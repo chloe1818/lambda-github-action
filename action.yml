@@ -95,7 +95,6 @@ inputs:
   tags:
     description: 'Tags to apply to the function as a JSON string (e.g. {"Environment":"Production","Team":"DevOps"})'
     required: false
-    
 outputs:
   function-arn:
     description: 'The ARN of the updated Lambda function.'

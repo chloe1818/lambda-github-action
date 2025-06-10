@@ -115,6 +115,33 @@ describe('Lambda Function Existence Check and Creation', () => {
 
   describe('Create function when it does not exist', () => {
     it('should create a new function when it does not exist', async () => {
+      // Mock the architecture value for test purposes
+      core.getInput.mockImplementation((name) => {
+        const inputs = {
+          'function-name': 'test-function',
+          'region': 'us-east-1',
+          'zip-file-path': './test.zip',
+          'role': 'arn:aws:iam::123456789012:role/lambda-role',
+          'runtime': 'nodejs18.x',
+          'handler': 'index.handler',
+          'architectures': 'x86_64',
+          'timeout': '3',
+          'publish': 'true',
+          'ephemeral-storage': '512',
+          'package-type': 'Zip'
+        };
+        return inputs[name] || '';
+      });
+      
+      // Mock getBooleanInput to return true for publish
+      core.getBooleanInput.mockImplementation((name) => {
+        const inputs = {
+          'publish': true,
+          'dry-run': false
+        };
+        return inputs[name] || false;
+      });
+      
       // Mock function check to return false (function doesn't exist)
       mockSend.mockImplementation(async (command) => {
         if (command.type === 'GetFunctionCommand') {
@@ -138,17 +165,20 @@ describe('Lambda Function Existence Check and Creation', () => {
         type: 'GetFunctionCommand'
       }));
 
-      // Verify CreateFunctionCommand was called with expected parameters
-      expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
-        FunctionName: 'test-function',
-        Runtime: 'nodejs18.x',
-        Role: 'arn:aws:iam::123456789012:role/lambda-role',
-        Handler: 'index.handler',
-        Code: expect.objectContaining({
-          ZipFile: expect.any(Buffer)
-        }),
-        type: 'CreateFunctionCommand'
-      }));
+      // Verify CreateFunctionCommand was called 
+      expect(mockSend).toHaveBeenCalledTimes(2);
+      
+      // Get the second call arguments
+      const secondCallArg = mockSend.mock.calls[1][0];
+      
+      // Verify specific fields individually
+      expect(secondCallArg.type).toBe('CreateFunctionCommand');
+      expect(secondCallArg.FunctionName).toBe('test-function');
+      expect(secondCallArg.Runtime).toBe('nodejs18.x');
+      expect(secondCallArg.Role).toBe('arn:aws:iam::123456789012:role/lambda-role');
+      expect(secondCallArg.Handler).toBe('index.handler');
+      expect(secondCallArg.Code).toBeDefined();
+      expect(secondCallArg.Code.ZipFile).toBeDefined();
 
       // Verify appropriate logs were shown
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Checking if test-function exists'));
