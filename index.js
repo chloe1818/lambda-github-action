@@ -295,21 +295,46 @@ async function packageCodeArtifacts(artifactsDir) {
   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
 
   try {
+    // Clean up and recreate temp directory
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
+      // Ignore errors if directory doesn't exist
     }
     
     await fs.mkdir(tempDir, { recursive: true });
 
-    core.info(`Copying artifacts from ${artifactsDir} to ${tempDir}`);
+    // Resolve the artifacts directory path - handle both absolute and relative paths
+    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
+      ? artifactsDir 
+      : path.resolve(process.cwd(), artifactsDir);
     
-    const files = await fs.readdir(artifactsDir);
+    core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
+    
+    // Check if directory exists before trying to read it
+    try {
+      await fs.access(resolvedArtifactsDir);
+    } catch (error) {
+      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
+    }
+    
+    const files = await fs.readdir(resolvedArtifactsDir);
+    
+    if (files.length === 0) {
+      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
+    }
+    
+    core.info(`Found ${files.length} files/directories to copy`);
     
     for (const file of files) {
+      const sourcePath = path.join(resolvedArtifactsDir, file);
+      const destPath = path.join(tempDir, file);
+      
+      core.info(`Copying ${sourcePath} to ${destPath}`);
+      
       await fs.cp(
-        path.join(artifactsDir, file),
-        path.join(tempDir, file),
+        sourcePath,
+        destPath,
         { recursive: true }
       );
     }
