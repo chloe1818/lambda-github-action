@@ -227,7 +227,7 @@ async function run() {
     
       let codeInput = {
         FunctionName: functionName,
-        Code: { ZipFile: zipFileContent },
+        ZipFile: zipFileContent,
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
