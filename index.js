@@ -55,13 +55,15 @@ async function run() {
 
       // Create function
       try {
+        const zipFileContent = await fs.readFile(finalZipPath);
+
         let input = {
           FunctionName: functionName,
           Runtime: runtime,
           Role: role,
           Handler: handler,
           Code: {
-            ZipFile: await fs.readFile(finalZipPath)
+            ZipFile: Buffer.from(zipFileContent)
           },
           Description: functionDescription,
           MemorySize: parsedMemorySize,
