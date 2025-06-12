@@ -94,7 +94,7 @@ async function run() {
           SourceKmsKeyArn: sourceKmsKeyArn
         };
         
-        input = cleanNullKeys(input);
+        //input = cleanNullKeys(input);
 
         core.info(`Creating new Lambda function: ${functionName}`);
         const command = new CreateFunctionCommand(input);
