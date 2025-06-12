@@ -59,10 +59,7 @@ async function run() {
         
         core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`);
         core.info(`Type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, isUint8Array: ${zipFileContent instanceof Uint8Array}`);
-        
-        // Create a proper Uint8Array from the Buffer for AWS SDK compatibility
-        const uint8Array = new Uint8Array(zipFileContent.buffer, zipFileContent.byteOffset, zipFileContent.length);
-        
+ 
         core.info('Creating Lambda function with deployment package');
 
         let input = {
@@ -71,7 +68,7 @@ async function run() {
           Role: role,
           Handler: handler,
           Code: {
-            ZipFile: uint8Array
+            ZipFile: zipFileContent
           },
           Description: functionDescription,
           MemorySize: parsedMemorySize,
@@ -225,13 +222,10 @@ async function run() {
         
         return;
       }
-      
-      // Create a proper Uint8Array from the Buffer for AWS SDK compatibility
-      const uint8Array = new Uint8Array(zipFileContent.buffer, zipFileContent.byteOffset, zipFileContent.length);
-      
+    
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: uint8Array,
+        ZipFile: zipFileContent,
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
