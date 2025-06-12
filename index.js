@@ -68,7 +68,7 @@ async function run() {
           Role: role,
           Handler: handler,
           Code: {
-            ZipFile: Buffer.from(zipFileContent)
+            ZipFile: new Uint8Array(zipFileContent)
           },
           Description: functionDescription,
           MemorySize: parsedMemorySize,
