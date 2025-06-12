@@ -202,7 +202,7 @@ async function run() {
       core.info('No configuration changes detected');
     }
 
-    // Update Function cCode
+    // Update Function Code
     core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
     
     try {
@@ -219,6 +219,21 @@ async function run() {
         // Debug the ZIP file content
         const stats = await fs.stat(finalZipPath);
         core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
+        
+        // Verify ZIP integrity
+        try {
+          const zipCheck = new AdmZip(zipFileContent);
+          const entries = zipCheck.getEntries();
+          core.info(`ZIP file validation passed - contains ${entries.length} entries`);
+          
+          // List all entries for debugging
+          entries.forEach((entry, i) => {
+            core.info(`Entry ${i + 1}: ${entry.entryName} (${entry.header.size} bytes)`);
+          });
+        } catch (zipError) {
+          core.error(`ZIP validation error: ${zipError.message}`);
+          throw new Error(`Invalid ZIP file structure: ${zipError.message}`);
+        }
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
 
@@ -235,11 +250,10 @@ async function run() {
         return;
       }
     
-      // Convert the zipFileContent to a base64-encoded string since we're getting
-    // a "@smithy/util-base64: toBase64 encoder function only accepts string | Uint8Array" error
-    let codeInput = {
+      // Use the raw Buffer for ZipFile - AWS SDK will handle Base64 encoding internally
+      let codeInput = {
         FunctionName: functionName,
-        ZipFile: zipFileContent.toString('base64'),
+        ZipFile: zipFileContent, // AWS SDK v3 accepts Buffer directly
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
@@ -247,7 +261,7 @@ async function run() {
       };
       
       // Debug log for troubleshooting
-      core.info(`ZipFile type: ${typeof zipFileContent.toString('base64')}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
+      core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
       
       codeInput = cleanNullKeys(codeInput);
       
@@ -356,26 +370,76 @@ async function packageCodeArtifacts(artifactsDir) {
       );
     }
 
-    core.info('Creating ZIP file');
-    const zip = new AdmZip();
+    // Use a completely different approach to create the zip file
+    // We'll use the Node.js child_process to call system zip command
+    // which has better compatibility with AWS Lambda
+    const { execSync } = require('child_process');
     
-    // Add files one by one to ensure proper ZIP structure
-    const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
-    
-    for (const file of tempFiles) {
-      const fullPath = path.join(tempDir, file.name);
+    try {
+      core.info('Creating ZIP file using system zip command');
       
-      if (file.isDirectory()) {
-        core.info(`Adding directory: ${file.name}`);
-        zip.addLocalFolder(fullPath, file.name);
-      } else {
-        core.info(`Adding file: ${file.name}`);
-        zip.addLocalFile(fullPath);
+      // First, check if zip command exists
+      try {
+        execSync('which zip', { stdio: 'pipe' });
+        core.info('Zip command found, proceeding with zip creation');
+      } catch (err) {
+        core.info('Zip command not found, falling back to AdmZip');
+        // Fall back to AdmZip if zip command not found
+        const zip = new AdmZip();
+        const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
+        
+        for (const file of tempFiles) {
+          const fullPath = path.join(tempDir, file.name);
+          
+          if (file.isDirectory()) {
+            core.info(`Adding directory: ${file.name}`);
+            zip.addLocalFolder(fullPath, file.name);
+          } else {
+            core.info(`Adding file: ${file.name}`);
+            zip.addLocalFile(fullPath);
+          }
+        }
+        
+        zip.writeZip(zipPath);
+        
+        core.info(`ZIP file created using AdmZip`);
+        return zipPath;
       }
+      
+      // Create the zip file using system zip command
+      // Change to the tempDir first so files are at the root of the zip
+      const zipCommand = `cd "${tempDir}" && zip -r "${zipPath}" ./*`;
+      core.info(`Executing: ${zipCommand}`);
+      
+      execSync(zipCommand, { stdio: 'inherit' });
+      
+      // Verify the zip file was created
+      const stats = await fs.stat(zipPath);
+      core.info(`ZIP file created using system zip command: ${zipPath} (${stats.size} bytes)`);
+    } catch (error) {
+      core.error(`Error creating zip with system command: ${error.message}`);
+      
+      // Fall back to simple approach with AdmZip as last resort
+      core.info('Falling back to simple approach with AdmZip');
+      const fallbackZip = new AdmZip();
+      
+      // Just add all files directly with no special options
+      const tempFiles = await fs.readdir(tempDir);
+      for (const file of tempFiles) {
+        const fullPath = path.join(tempDir, file);
+        const stat = await fs.stat(fullPath);
+        
+        if (stat.isDirectory()) {
+          core.info(`Adding directory (simple): ${file}`);
+          fallbackZip.addLocalFolder(fullPath, file);
+        } else {
+          core.info(`Adding file (simple): ${file}`);
+          fallbackZip.addLocalFile(fullPath);
+        }
+      }
+      
+      fallbackZip.writeZip(zipPath);
     }
-    
-    // Write the zip with a specific compression method
-    zip.writeZip(zipPath);
     
     // Verify the ZIP file is not empty
     try {
