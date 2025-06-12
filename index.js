@@ -210,13 +210,13 @@ async function run() {
       try {
         zipFileContent = await fs.readFile(finalZipPath);
         
-        if (!Buffer.isBuffer(zipFileContent)) {
-          core.info(`Converting file content to Buffer, current type: ${typeof zipFileContent}`);
-          zipFileContent = Buffer.from(zipFileContent);
-        }
+        // if (!Buffer.isBuffer(zipFileContent)) {
+        //   core.info(`Converting file content to Buffer, current type: ${typeof zipFileContent}`);
+        //   zipFileContent = Buffer.from(zipFileContent);
+        // }
         
-        const stats = await fs.stat(finalZipPath);
-        core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
+        // const stats = await fs.stat(finalZipPath);
+        // core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
         
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
