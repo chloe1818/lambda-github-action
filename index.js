@@ -147,6 +147,7 @@ async function run() {
       LoggingConfig: loggingConfig ? parsedLoggingConfig : undefined
     });
 
+    // Update Function Configuration
     if (configChanged) {
       if (dryRun) {
         core.info('[DRY RUN] Configuration updates are not simulated in dry run mode');
@@ -201,9 +202,10 @@ async function run() {
       core.info('No configuration changes detected');
     }
 
-    core.info(`Updating function code for ${functionName} with ${zipFileContent}`);
+    // Update Function cCode
+    core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
     
-      try {
+    try {
       let zipFileContent;
       try {
         // Read the ZIP file as a Buffer (binary data)
@@ -235,7 +237,7 @@ async function run() {
     
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: zipFileContent,
+        ZipFile: "/home/runner/work/lambda-test/lambda-test/.github/actions/lambda-github-action/dist/lambda-package/index.js",
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
