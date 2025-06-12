@@ -247,7 +247,7 @@ async function run() {
       };
       
       // Debug log for troubleshooting
-      core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
+      core.info(`ZipFile type: ${typeof zipFileContent.toString('base64')}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
       
       codeInput = cleanNullKeys(codeInput);
       
