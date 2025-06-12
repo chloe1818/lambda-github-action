@@ -38,7 +38,7 @@ describe('Input Validation Tests', () => {
       switch (name) {
         case 'function-name': return 'test-function';
         case 'region': return 'us-east-1';
-        case 'zip-file-path': return './test.zip';
+        case 'code-artifacts-dir': return './artifacts';
         default: return '';
       }
     });
@@ -203,7 +203,7 @@ describe('Input Validation Tests', () => {
           if (name === 'memory-size') return size;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './artifacts';
           return '';
         });
         
@@ -223,7 +223,7 @@ describe('Input Validation Tests', () => {
           if (name === 'memory-size') return size;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -247,7 +247,7 @@ describe('Input Validation Tests', () => {
           if (name === 'memory-size') return size;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -265,10 +265,10 @@ describe('Input Validation Tests', () => {
     it('should handle empty memory size input', () => {
       jest.clearAllMocks();
       core.getInput.mockImplementation((name) => {
-        if (name === 'memory-size') return '';
-        if (name === 'function-name') return 'test-function';
-        if (name === 'region') return 'us-east-1';
-        if (name === 'zip-file-path') return './test.zip';
+          if (name === 'memory-size') return '';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
         return '';
       });
       
@@ -290,7 +290,7 @@ describe('Input Validation Tests', () => {
           if (name === 'timeout') return timeout;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './artifacts';
           return '';
         });
         
@@ -310,7 +310,7 @@ describe('Input Validation Tests', () => {
           if (name === 'timeout') return timeout;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -334,7 +334,7 @@ describe('Input Validation Tests', () => {
           if (name === 'timeout') return timeout;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -361,7 +361,7 @@ describe('Input Validation Tests', () => {
           if (name === 'ephemeral-storage') return storage;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './artifacts';
           return '';
         });
         
@@ -381,7 +381,7 @@ describe('Input Validation Tests', () => {
           if (name === 'ephemeral-storage') return storage;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -405,7 +405,7 @@ describe('Input Validation Tests', () => {
           if (name === 'ephemeral-storage') return storage;
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
-          if (name === 'zip-file-path') return './test.zip';
+          if (name === 'code-artifacts-dir') return './src';
           return '';
         });
         
@@ -426,7 +426,7 @@ describe('Input Validation Tests', () => {
       core.getInput.mockImplementation((name, options) => {
         if (name === 'function-name') return '';
         if (name === 'region') return 'us-east-1';
-        if (name === 'zip-file-path') return './test.zip';
+        if (name === 'code-artifacts-dir') return './src';
         return '';
       });
       
@@ -442,7 +442,7 @@ describe('Input Validation Tests', () => {
       core.getInput.mockImplementation((name, options) => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return '';
-        if (name === 'zip-file-path') return './test.zip';
+        if (name === 'code-artifacts-dir') return './src';
         return '';
       });
       
@@ -454,11 +454,10 @@ describe('Input Validation Tests', () => {
       );
     });
     
-    it('should require either zip-file-path or code-artifacts-dir', () => {
+    it('should require code-artifacts-dir', () => {
       core.getInput.mockImplementation((name, options) => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
-        if (name === 'zip-file-path') return '';
         if (name === 'code-artifacts-dir') return '';
         return '';
       });
@@ -467,7 +466,7 @@ describe('Input Validation Tests', () => {
       expect(result.valid).toBe(false);
       
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringMatching(/Either zip-file-path or code-artifacts-dir must be provided/i)
+        expect.stringMatching(/Code-artifacts-dir must be provided/i)
       );
     });
   });
@@ -492,15 +491,30 @@ describe('Input Validation Tests', () => {
         valid: true,
         functionName: 'test-function',
         region: 'us-east-1',
-        zipFilePath: './test.zip',
+        codeArtifactsDir: './artifacts',
         // Add other required fields here
         ephemeralStorage: 512,
+        parsedMemorySize: 256,
         timeout: 3,
         packageType: 'Zip',
         dryRun: false,
         publish: true,
-        runtime: 'nodejs',
+        runtime: 'nodejs20.x',
+        handler: 'index.handler',
         architectures: 'x86_64',
+        parsedEnvironment: { NODE_ENV: 'production' },
+        parsedVpcConfig: { 
+          SubnetIds: ['subnet-123456'], 
+          SecurityGroupIds: ['sg-123456'] 
+        },
+        parsedDeadLetterConfig: { TargetArn: 'arn:aws:sqs:us-east-1:123456789012:dlq' },
+        parsedTracingConfig: { Mode: 'Active' },
+        parsedLayers: ['arn:aws:lambda:us-east-1:123456789012:layer:my-layer:1'],
+        parsedFileSystemConfigs: [{ Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-123456', LocalMountPath: '/mnt/efs' }],
+        parsedImageConfig: { EntryPoint: ['app.handler'] },
+        parsedSnapStart: { ApplyOn: 'PublishedVersions' },
+        parsedLoggingConfig: { LogFormat: 'JSON', LogGroup: '/aws/lambda/test-function' },
+        parsedTags: { Environment: 'Production' }
       });
 
       // This will likely throw due to AWS client being mocked/missing
@@ -516,6 +530,46 @@ describe('Input Validation Tests', () => {
 
       // Additional assertions could go here, depending on what you want to test
       // in the main module after validation passes
+    });
+  });
+  
+  describe('Publish flag validation', () => {
+    it('should properly handle publish flag as boolean', () => {
+      // Override core.getBooleanInput for this test
+      core.getBooleanInput.mockImplementation((name) => {
+        if (name === 'publish') return true;
+        return false;
+      });
+      
+      const inputs = {
+        'function-name': 'test-function',
+        'region': 'us-east-1',
+        'code-artifacts-dir': './src'
+      };
+      
+      core.getInput.mockImplementation((name) => inputs[name] || '');
+      
+      const result = originalValidations.getAdditionalInputs();
+      expect(result.publish).toBe(true);
+    });
+    
+    it('should default publish flag to true when not specified', () => {
+      // Mock getBooleanInput to throw an error for 'publish'
+      core.getBooleanInput.mockImplementation((name) => {
+        if (name === 'publish') throw new Error('Input not found');
+        return false;
+      });
+      
+      const inputs = {
+        'function-name': 'test-function',
+        'region': 'us-east-1',
+        'code-artifacts-dir': './src'
+      };
+      
+      core.getInput.mockImplementation((name) => inputs[name] || '');
+      
+      const result = originalValidations.getAdditionalInputs();
+      expect(result.publish).toBe(true);
     });
   });
 });

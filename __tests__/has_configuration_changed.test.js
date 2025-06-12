@@ -77,6 +77,64 @@ describe('cleanNullKeys function', () => {
       }
     });
   });
+  
+  test('should preserve VpcConfig with empty arrays for SubnetIds and SecurityGroupIds', () => {
+    const input = {
+      VpcConfig: {
+        SubnetIds: [],
+        SecurityGroupIds: []
+      }
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      VpcConfig: {
+        SubnetIds: [],
+        SecurityGroupIds: []
+      }
+    });
+  });
+  
+  test('should handle VpcConfig even when other properties have empty values', () => {
+    const input = {
+      FunctionName: 'test-function',
+      Role: 'arn:aws:iam::123456789012:role/lambda-role',
+      VpcConfig: {
+        SubnetIds: ['subnet-123'],
+        SecurityGroupIds: [],
+        EmptyProp: null
+      },
+      EmptyObj: {}
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      FunctionName: 'test-function',
+      Role: 'arn:aws:iam::123456789012:role/lambda-role',
+      VpcConfig: {
+        SubnetIds: ['subnet-123'],
+        SecurityGroupIds: []
+      }
+    });
+  });
+  
+  test('should handle properly zero and false values', () => {
+    const input = {
+      zeroValue: 0,
+      falseValue: false,
+      emptyString: '',
+      nullValue: null
+    };
+    
+    const result = cleanNullKeys(input);
+    
+    expect(result).toEqual({
+      zeroValue: 0,
+      falseValue: false
+    });
+  });
 });
 
 describe('hasConfigurationChanged function', () => {
@@ -270,7 +328,7 @@ describe('hasConfigurationChanged function', () => {
     expect(result).toBe(false);
   });
 
-  // New tests for enhanced empty value handling
+  // Tests for enhanced empty value handling
   
   test('should handle empty arrays properly', async () => {
     const current = {
@@ -399,5 +457,46 @@ describe('hasConfigurationChanged function', () => {
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in CacheEnabled'));
+  });
+  
+  test('should handle new configuration parameters', async () => {
+    const current = {
+      Runtime: 'nodejs18.x',
+      MemorySize: 256
+    };
+    
+    const updated = {
+      Runtime: 'nodejs20.x',
+      MemorySize: 256,
+      SnapStart: { ApplyOn: 'PublishedVersions' },
+      LoggingConfig: { LogFormat: 'JSON' }
+    };
+    
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Runtime'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in SnapStart'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in LoggingConfig'));
+  });
+  
+  test('should handle special case for VpcConfig with empty arrays', async () => {
+    const current = {
+      VpcConfig: {
+        SubnetIds: ['subnet-123', 'subnet-456'],
+        SecurityGroupIds: ['sg-123']
+      }
+    };
+    
+    const updated = {
+      VpcConfig: {
+        SubnetIds: [],
+        SecurityGroupIds: []
+      }
+    };
+    
+    // This should detect a change since VpcConfig arrays are preserved even when empty
+    const result = await hasConfigurationChanged(current, updated);
+    expect(result).toBe(true);
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in VpcConfig'));
   });
 });

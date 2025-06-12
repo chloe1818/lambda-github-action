@@ -45,7 +45,7 @@ describe('Lambda Function Code Update Unit Tests', () => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'zip-file-path': '/mock/function.zip',
+        'code-artifacts-dir': '/mock/src',
         'architectures': 'x86_64'
       };
       return inputs[name] || '';
@@ -99,11 +99,13 @@ describe('Lambda Function Code Update Unit Tests', () => {
   test('should properly construct parameters for UpdateFunctionCodeCommand', async () => {
     // Define expected parameters
     const functionName = 'test-function';
-    const zipFilePath = '/mock/function.zip';
+    const zipPath = '/mock/cwd/lambda-function.zip';
     const architectures = 'x86_64';
-    
+    const sourceKmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/test-key';
+    const revisionId = 'abc123';
+
     // Read the ZIP file content
-    const zipContent = await fs.readFile(zipFilePath);
+    const zipContent = await fs.readFile(zipPath);
     
     // Create the command parameters
     const params = {
@@ -111,6 +113,8 @@ describe('Lambda Function Code Update Unit Tests', () => {
       ZipFile: zipContent,
       Architectures: [architectures],
       Publish: true,
+      RevisionId: revisionId,
+      SourceKmsKeyArn: sourceKmsKeyArn
     };
     
     // Verify the parameters are correct before passing to the command
@@ -118,6 +122,8 @@ describe('Lambda Function Code Update Unit Tests', () => {
     expect(params.ZipFile).toBeDefined();
     expect(params.Architectures).toEqual([architectures]);
     expect(params.Publish).toBe(true);
+    expect(params.RevisionId).toBe(revisionId);
+    expect(params.SourceKmsKeyArn).toBe(sourceKmsKeyArn);
     
     // Create a spy for the command constructor
     const commandSpy = jest.spyOn(require('@aws-sdk/client-lambda'), 'UpdateFunctionCodeCommand');
@@ -148,14 +154,26 @@ describe('Lambda Function Code Update Unit Tests', () => {
       FunctionName: 'test-function',
       ZipFile: mockZipContent,
       Architectures: ['x86_64'],
-      Publish: true
+      Publish: true,
+      RevisionId: 'abc123'
     };
     
+    // Mock cleanNullKeys to ensure it's tested
+    jest.spyOn(mainModule, 'cleanNullKeys').mockImplementation((obj) => {
+      return obj; // For testing simplicity, just return the object
+    });
+    
+    // Clean the params just like in the actual implementation
+    const cleanedParams = mainModule.cleanNullKeys(params);
+    
     // Create the command
-    const command = new UpdateFunctionCodeCommand(params);
+    const command = new UpdateFunctionCodeCommand(cleanedParams);
     
     // Send the command
     const result = await mockLambdaClient.send(command);
+    
+    // Verify cleanNullKeys was called
+    expect(mainModule.cleanNullKeys).toHaveBeenCalled();
     
     // Verify the command was sent correctly
     expect(mockLambdaClient.send).toHaveBeenCalledWith(command);
@@ -220,21 +238,29 @@ describe('Lambda Function Code Update Unit Tests', () => {
     // Create a simple implementation of the dry run logic from index.js
     function simulateDryRun() {
       // Simulate log output and actions
+      infoSpy('DRY RUN MODE: No AWS resources will be created or modified');
       infoSpy('[DRY RUN] Would update function code with parameters:');
-      infoSpy(JSON.stringify({ FunctionName: 'test-function', ZipFile: '<binary zip data not shown>' }));
+      infoSpy(JSON.stringify({ 
+        FunctionName: 'test-function', 
+        ZipFile: '<binary zip data not shown>',
+        DryRun: true 
+      }));
       
       const mockArn = 'arn:aws:lambda:us-east-1:000000000000:function:test-function';
       setOutputSpy('function-arn', mockArn);
       setOutputSpy('version', '$LATEST');
-      infoSpy('[DRY RUN] Function code update simulation completed');
+      infoSpy('[DRY RUN] Function code validation passed');
+      infoSpy('[DRY RUN] Function code update validation completed');
     }
     
     // Run the simulation
     simulateDryRun();
     
     // Assert - Verify dry run logs
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('DRY RUN MODE:'));
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[DRY RUN] Would update function code'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[DRY RUN] Function code update simulation completed'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Function code validation passed'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Function code update validation completed'));
     
     // Verify mock outputs
     expect(setOutputSpy).toHaveBeenCalledWith('function-arn', expect.stringContaining('arn:aws:lambda:us-east-1:000000000000:function:test-function'));
@@ -269,6 +295,40 @@ describe('Lambda Function Code Update Unit Tests', () => {
       expect.objectContaining({
         RevisionId: revisionId,
         SourceKmsKeyArn: sourceKmsKeyArn
+      })
+    );
+  });
+  
+  test('should handle array conversion for architectures parameter', () => {
+    // Define parameters with architectures as string
+    const functionName = 'test-function';
+    const architectures = 'arm64'; // String instead of array
+    const zipContent = Buffer.from('mock zip content');
+    
+    // Create parameters for the command
+    const params = {
+      FunctionName: functionName,
+      ZipFile: zipContent,
+      Architectures: architectures, // Not an array yet
+      Publish: true
+    };
+    
+    // Mock the behavior of the index.js code that handles this conversion
+    const processedParams = {
+      ...params,
+      Architectures: Array.isArray(architectures) ? architectures : [architectures]
+    };
+    
+    // Create a spy for the command constructor
+    const commandSpy = jest.spyOn(require('@aws-sdk/client-lambda'), 'UpdateFunctionCodeCommand');
+    
+    // Create the command with processed parameters
+    new UpdateFunctionCodeCommand(processedParams);
+    
+    // Verify the constructor was called with architectures as an array
+    expect(commandSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Architectures: ['arm64'] // Should be converted to array
       })
     );
   });

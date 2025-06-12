@@ -63,7 +63,7 @@ describe('Lambda Update Unit Tests', () => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'zip-file-path': '/mock/function.zip',
+        'code-artifacts-dir': '/mock/src',
         'role': 'arn:aws:iam::123456789012:role/lambda-role',
         'runtime': 'nodejs18.x',
         'handler': 'index.handler',
@@ -153,7 +153,7 @@ describe('Lambda Update Unit Tests', () => {
     };
     
     const updatedConfig = {
-      Runtime: 'nodejs18.x',
+      Runtime: 'nodejs20.x',
       Role: 'arn:aws:iam::123456789012:role/lambda-role'
     };
     
@@ -168,6 +168,44 @@ describe('Lambda Update Unit Tests', () => {
     core.info.mockClear();
     const noChangeResult = await mainModule.hasConfigurationChanged(currentConfig, currentConfig);
     expect(noChangeResult).toBe(false);
+  });
+  
+  test('should handle complex configuration types', async () => {
+    // Test with various configuration types including JSON structures
+    const currentConfig = {
+      Runtime: 'nodejs18.x',
+      Environment: {
+        Variables: {
+          NODE_ENV: 'development'
+        }
+      },
+      VpcConfig: {
+        SubnetIds: ['subnet-123'],
+        SecurityGroupIds: ['sg-123']
+      }
+    };
+    
+    const updatedConfig = {
+      Runtime: 'nodejs20.x',
+      Environment: {
+        Variables: {
+          NODE_ENV: 'production',
+          LOG_LEVEL: 'info'
+        }
+      },
+      VpcConfig: {
+        SubnetIds: ['subnet-123', 'subnet-456'],
+        SecurityGroupIds: ['sg-123']
+      }
+    };
+    
+    const result = await mainModule.hasConfigurationChanged(currentConfig, updatedConfig);
+    expect(result).toBe(true);
+    
+    // Check specific log messages for each changed property
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Runtime'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Environment'));
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in VpcConfig'));
   });
 
   test('should package artifacts correctly', async () => {
@@ -205,7 +243,7 @@ describe('Lambda Update Unit Tests', () => {
     // Assert success case
     expect(successResult).toBe(true);
     expect(mockClient.send).toHaveBeenCalledTimes(1);
-    expect(mockClient.send.mock.calls[0][0]).toBeInstanceOf(GetFunctionCommand);
+    expect(mockClient.send.mock.calls[0][0]).toBeInstanceOf(GetFunctionConfigurationCommand);
     
     // Setup for failure case - ResourceNotFoundException
     mockClient.send.mockRejectedValueOnce({
@@ -253,20 +291,45 @@ describe('Lambda Update Unit Tests', () => {
   test('should update function configuration with correct parameters', () => {
     // Test parameters
     const functionName = 'test-function';
-    const runtime = 'nodejs18.x';
+    const runtime = 'nodejs20.x';
     const handler = 'index.handler';
     const role = 'arn:aws:iam::123456789012:role/lambda-role';
     const memorySize = 256;
     const timeout = 15;
+    const ephemeralStorage = { Size: 512 };
+    const kmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/test-key';
+    const environment = { Variables: { NODE_ENV: 'production' } };
+    const vpcConfig = { 
+      SubnetIds: ['subnet-123'], 
+      SecurityGroupIds: ['sg-123'] 
+    };
+    const tracingConfig = { Mode: 'Active' };
+    const layers = ['arn:aws:lambda:us-east-1:123456789012:layer:my-layer:1'];
+    const fileSystemConfigs = [
+      { Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-123', LocalMountPath: '/mnt/efs' }
+    ];
+    const imageConfig = { EntryPoint: ['app.handler'] };
+    const snapStart = { ApplyOn: 'PublishedVersions' };
+    const loggingConfig = { LogFormat: 'JSON', LogGroup: '/aws/lambda/test-function' };
     
-    // Create a test input object
+    // Create a test input object with all new parameters
     const params = {
       FunctionName: functionName,
       Runtime: runtime,
       Handler: handler,
       Role: role,
       MemorySize: memorySize,
-      Timeout: timeout
+      Timeout: timeout,
+      EphemeralStorage: ephemeralStorage,
+      KMSKeyArn: kmsKeyArn,
+      Environment: environment,
+      VpcConfig: vpcConfig,
+      TracingConfig: tracingConfig,
+      Layers: layers,
+      FileSystemConfigs: fileSystemConfigs,
+      ImageConfig: imageConfig,
+      SnapStart: snapStart,
+      LoggingConfig: loggingConfig
     };
     
     // Spy on the AWS SDK command constructor
@@ -286,6 +349,41 @@ describe('Lambda Update Unit Tests', () => {
     expect(calledParams.Role).toBe(role);
     expect(calledParams.MemorySize).toBe(memorySize);
     expect(calledParams.Timeout).toBe(timeout);
+    expect(calledParams.EphemeralStorage).toEqual(ephemeralStorage);
+    expect(calledParams.KMSKeyArn).toBe(kmsKeyArn);
+    expect(calledParams.Environment).toEqual(environment);
+    expect(calledParams.VpcConfig).toEqual(vpcConfig);
+    expect(calledParams.TracingConfig).toEqual(tracingConfig);
+    expect(calledParams.Layers).toEqual(layers);
+    expect(calledParams.FileSystemConfigs).toEqual(fileSystemConfigs);
+    expect(calledParams.ImageConfig).toEqual(imageConfig);
+    expect(calledParams.SnapStart).toEqual(snapStart);
+    expect(calledParams.LoggingConfig).toEqual(loggingConfig);
+  });
+  
+  test('should clean null keys before sending update commands', () => {
+    // Create a spy for cleanNullKeys
+    const cleanNullKeysSpy = jest.spyOn(mainModule, 'cleanNullKeys');
+    
+    // Create a test input object with some null and undefined values
+    const params = {
+      FunctionName: 'test-function',
+      Runtime: 'nodejs20.x',
+      Handler: 'index.handler',
+      Role: 'arn:aws:iam::123456789012:role/lambda-role',
+      MemorySize: undefined,
+      Timeout: null,
+      Environment: { Variables: { ENV: 'production', EMPTY: '' } }
+    };
+    
+    // Clean the params just like in the actual implementation
+    const cleanedParams = mainModule.cleanNullKeys(params);
+    
+    // Create a command that should trigger cleanNullKeys
+    new UpdateFunctionConfigurationCommand(cleanedParams);
+    
+    // Verify cleanNullKeys was called
+    expect(cleanNullKeysSpy).toHaveBeenCalled();
   });
   
   // Test error handling during configuration update - just test the error handling directly

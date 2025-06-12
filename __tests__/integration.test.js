@@ -168,13 +168,13 @@ describe('Lambda Deployment Integration Tests', () => {
     expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Action failed with error'));
   });
   
-  it('should use pre-packaged ZIP when code-artifacts-dir is not provided', async () => {
-    // Change the mock to return zip-file-path instead of code-artifacts-dir
+  it('should correctly use code-artifacts-dir when provided', async () => {
+    // Update the mock with a different artifacts directory
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'zip-file-path': '/mock/prepared-package.zip',
+        'code-artifacts-dir': '/mock/different-artifacts',
         'role': 'arn:aws:iam::123456789012:role/lambda-role',
       };
       return inputs[name] || '';
@@ -198,8 +198,8 @@ describe('Lambda Deployment Integration Tests', () => {
     expect(core.setFailed).not.toHaveBeenCalled();
   });
   
-  it('should fail when both code-artifacts-dir and zip-file-path are missing', async () => {
-    // Change the mock to return neither code-artifacts-dir nor zip-file-path
+  it('should fail when code-artifacts-dir is missing', async () => {
+    // Change the mock to return without code-artifacts-dir
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
@@ -208,27 +208,26 @@ describe('Lambda Deployment Integration Tests', () => {
       };
       return inputs[name] || '';
     });
-    
+
     // Set up the run mock for this specific test
     mainModule.run.mockImplementationOnce(async () => {
-      const zipFilePath = core.getInput('zip-file-path');
       const codeArtifactsDir = core.getInput('code-artifacts-dir');
-      
-      if (!zipFilePath && !codeArtifactsDir) {
-        core.setFailed('Either zip-file-path or code-artifacts-dir must be provided');
+
+      if (!codeArtifactsDir) {
+        core.setFailed('Code-artifacts-dir must be provided');
         return;
       }
-      
+
       // This shouldn't execute in this test
       await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
     });
-    
+
     // Call the main function
     await mainModule.run();
-    
+
     // Verify error was reported
     expect(core.setFailed).toHaveBeenCalledWith(
-      'Either zip-file-path or code-artifacts-dir must be provided'
+      'Code-artifacts-dir must be provided'
     );
     
     // Verify packaging functions were not called

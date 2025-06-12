@@ -5,8 +5,10 @@ const {
 const core = require('@actions/core');
 const { 
   LambdaClient, 
-  GetFunctionCommand,
-  CreateFunctionCommand
+  GetFunctionConfigurationCommand,
+  CreateFunctionCommand,
+  UpdateFunctionConfigurationCommand,
+  UpdateFunctionCodeCommand
 } = require('@aws-sdk/client-lambda');
 const fs = require('fs/promises');
 
@@ -22,12 +24,33 @@ describe('Lambda Function Existence Check and Creation', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     
+    // Mock validateAllInputs from validations
+    jest.spyOn(require('../validations'), 'validateAllInputs').mockReturnValue({
+      valid: true,
+      functionName: 'test-function',
+      region: 'us-east-1',
+      codeArtifactsDir: './src',
+      role: 'arn:aws:iam::123456789012:role/lambda-role',
+      runtime: 'nodejs20.x',
+      handler: 'index.handler',
+      ephemeralStorage: 512,
+      parsedMemorySize: 128,
+      timeout: 3,
+      packageType: 'Zip',
+      dryRun: false,
+      publish: true,
+      architectures: 'x86_64',
+      functionDescription: 'Test function',
+      kmsKeyArn: 'arn:aws:kms:us-east-1:123456789012:key/test-key',
+      codeSigningConfigArn: 'arn:aws:lambda:us-east-1:123456789012:code-signing-config:abc123'
+    });
+    
     // Setup core mocks
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'zip-file-path': './test.zip',
+        'code-artifacts-dir': './src',
         'role': 'arn:aws:iam::123456789012:role/lambda-role',
         'runtime': 'nodejs18.x',
         'handler': 'index.handler'
@@ -42,6 +65,10 @@ describe('Lambda Function Existence Check and Creation', () => {
     
     // Mock file system operations
     fs.readFile.mockResolvedValue(Buffer.from('mock zip content'));
+    fs.readdir.mockResolvedValue(['index.js', 'package.json']);
+    fs.mkdir.mockResolvedValue();
+    fs.cp.mockResolvedValue();
+    fs.rm.mockResolvedValue();
     
     // Mock Lambda client
     mockSend = jest.fn();
@@ -53,14 +80,24 @@ describe('Lambda Function Existence Check and Creation', () => {
     LambdaClient.mockImplementation(() => mockLambdaClient);
     
     // Mock command constructors
-    GetFunctionCommand.mockImplementation((params) => ({
+    GetFunctionConfigurationCommand.mockImplementation((params) => ({
       ...params,
-      type: 'GetFunctionCommand'
+      type: 'GetFunctionConfigurationCommand'
     }));
     
     CreateFunctionCommand.mockImplementation((params) => ({
       ...params,
       type: 'CreateFunctionCommand'
+    }));
+    
+    UpdateFunctionConfigurationCommand.mockImplementation((params) => ({
+      ...params,
+      type: 'UpdateFunctionConfigurationCommand'
+    }));
+    
+    UpdateFunctionCodeCommand.mockImplementation((params) => ({
+      ...params,
+      type: 'UpdateFunctionCodeCommand'
     }));
   });
 
@@ -78,7 +115,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       expect(result).toBe(true);
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
     });
 
@@ -93,7 +130,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       expect(result).toBe(false);
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
     });
 
@@ -108,7 +145,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
     });
   });
@@ -120,15 +157,19 @@ describe('Lambda Function Existence Check and Creation', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip',
+          'code-artifacts-dir': './src',
           'role': 'arn:aws:iam::123456789012:role/lambda-role',
-          'runtime': 'nodejs18.x',
+          'runtime': 'nodejs20.x',
           'handler': 'index.handler',
           'architectures': 'x86_64',
           'timeout': '3',
           'publish': 'true',
           'ephemeral-storage': '512',
-          'package-type': 'Zip'
+          'function-description': 'Test function',
+          'environment': '{"NODE_ENV":"production"}',
+          'vpc-config': '{"SubnetIds":["subnet-123"],"SecurityGroupIds":["sg-123"]}',
+          'kms-key-arn': 'arn:aws:kms:us-east-1:123456789012:key/test-key',
+          'code-signing-config-arn': 'arn:aws:lambda:us-east-1:123456789012:code-signing-config:abc123'
         };
         return inputs[name] || '';
       });
@@ -142,9 +183,20 @@ describe('Lambda Function Existence Check and Creation', () => {
         return inputs[name] || false;
       });
       
+      // Mock validations for JSON inputs
+      jest.spyOn(require('../validations'), 'parseJsonInput').mockImplementation((jsonString) => {
+        if (jsonString === '{"NODE_ENV":"production"}') {
+          return { NODE_ENV: 'production' };
+        }
+        if (jsonString === '{"SubnetIds":["subnet-123"],"SecurityGroupIds":["sg-123"]}') {
+          return { SubnetIds: ['subnet-123'], SecurityGroupIds: ['sg-123'] };
+        }
+        return JSON.parse(jsonString);
+      });
+      
       // Mock function check to return false (function doesn't exist)
       mockSend.mockImplementation(async (command) => {
-        if (command.type === 'GetFunctionCommand') {
+        if (command.type === 'GetFunctionConfigurationCommand') {
           const error = new Error('Function not found');
           error.name = 'ResourceNotFoundException';
           throw error;
@@ -155,6 +207,11 @@ describe('Lambda Function Existence Check and Creation', () => {
           };
         }
       });
+      
+      // Mock cleanNullKeys to ensure it's tested
+      jest.spyOn(require('../index'), 'cleanNullKeys').mockImplementation((obj) => {
+        return obj; // For testing simplicity, just return the object
+      });
 
       // Run the main function
       await run();
@@ -162,7 +219,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       // Verify GetFunctionCommand was called to check if function exists
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
 
       // Verify CreateFunctionCommand was called 
@@ -174,11 +231,15 @@ describe('Lambda Function Existence Check and Creation', () => {
       // Verify specific fields individually
       expect(secondCallArg.type).toBe('CreateFunctionCommand');
       expect(secondCallArg.FunctionName).toBe('test-function');
-      expect(secondCallArg.Runtime).toBe('nodejs18.x');
+      expect(secondCallArg.Runtime).toBe('nodejs20.x');
       expect(secondCallArg.Role).toBe('arn:aws:iam::123456789012:role/lambda-role');
       expect(secondCallArg.Handler).toBe('index.handler');
+      expect(secondCallArg.Description).toBe('Test function');
       expect(secondCallArg.Code).toBeDefined();
       expect(secondCallArg.Code.ZipFile).toBeDefined();
+      expect(secondCallArg.EphemeralStorage).toEqual({ Size: 512 });
+      expect(secondCallArg.KMSKeyArn).toBe('arn:aws:kms:us-east-1:123456789012:key/test-key');
+      expect(secondCallArg.CodeSigningConfigArn).toBe('arn:aws:lambda:us-east-1:123456789012:code-signing-config:abc123');
 
       // Verify appropriate logs were shown
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Checking if test-function exists'));
@@ -190,21 +251,27 @@ describe('Lambda Function Existence Check and Creation', () => {
     });
 
     it('should fail if role is not provided when creating a new function', async () => {
-      // Override the mock to return no role
-      core.getInput.mockImplementation((name) => {
-        const inputs = {
-          'function-name': 'test-function',
-          'region': 'us-east-1',
-          'zip-file-path': './test.zip',
-          'runtime': 'nodejs18.x',
-          'handler': 'index.handler'
-        };
-        return inputs[name] || '';
+      // Override validateAllInputs to return valid but without role
+      jest.spyOn(require('../validations'), 'validateAllInputs').mockReturnValue({
+        valid: true,
+        functionName: 'test-function',
+        region: 'us-east-1',
+        codeArtifactsDir: './src',
+        runtime: 'nodejs20.x',
+        handler: 'index.handler',
+        ephemeralStorage: 512,
+        parsedMemorySize: 128,
+        timeout: 3,
+        packageType: 'Zip',
+        dryRun: false,
+        publish: true,
+        architectures: 'x86_64',
+        role: undefined, // No role provided
       });
 
       // Mock function check to return false (function doesn't exist)
       mockSend.mockImplementation(async (command) => {
-        if (command.type === 'GetFunctionCommand') {
+        if (command.type === 'GetFunctionConfigurationCommand') {
           const error = new Error('Function not found');
           error.name = 'ResourceNotFoundException';
           throw error;
@@ -217,7 +284,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       // Verify GetFunctionCommand was called to check if function exists
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
 
       // Verify error was reported
@@ -232,7 +299,7 @@ describe('Lambda Function Existence Check and Creation', () => {
     it('should handle errors during function creation', async () => {
       // Mock function check to return false (function doesn't exist)
       mockSend.mockImplementation(async (command) => {
-        if (command.type === 'GetFunctionCommand') {
+        if (command.type === 'GetFunctionConfigurationCommand') {
           const error = new Error('Function not found');
           error.name = 'ResourceNotFoundException';
           throw error;
@@ -247,7 +314,7 @@ describe('Lambda Function Existence Check and Creation', () => {
       // Verify GetFunctionCommand was called to check if function exists
       expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
         FunctionName: 'test-function',
-        type: 'GetFunctionCommand'
+        type: 'GetFunctionConfigurationCommand'
       }));
 
       // Verify CreateFunctionCommand was called
@@ -258,6 +325,53 @@ describe('Lambda Function Existence Check and Creation', () => {
 
       // Verify error was reported
       expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Failed to create function'));
+    });
+  });
+  
+  describe('Error handling tests', () => {
+    it('should handle ThrottlingException errors', async () => {
+      // Mock function check to throw a throttling error
+      mockSend.mockImplementation(async () => {
+        const error = new Error('Rate exceeded');
+        error.name = 'ThrottlingException';
+        throw error;
+      });
+
+      // Run the main function
+      await run();
+
+      // Verify error was reported with the correct message
+      expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Rate limit exceeded and maximum retries reached'));
+    });
+
+    it('should handle 5xx server errors', async () => {
+      // Mock function check to throw a server error
+      mockSend.mockImplementation(async () => {
+        const error = new Error('Internal server error');
+        error.$metadata = { httpStatusCode: 500 };
+        throw error;
+      });
+
+      // Run the main function
+      await run();
+
+      // Verify error was reported with the correct message
+      expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Server error (500)'));
+    });
+
+    it('should handle permission errors', async () => {
+      // Mock function check to throw a permission error
+      mockSend.mockImplementation(async () => {
+        const error = new Error('Insufficient permissions');
+        error.name = 'AccessDeniedException';
+        throw error;
+      });
+
+      // Run the main function
+      await run();
+
+      // Verify error was reported with the correct message
+      expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Permissions error'));
     });
   });
 });

@@ -14,21 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      
-      - name: Install dependencies
-        run: |
-          cd lambda-example
-          npm install
-          
-      - name: Package Lambda function
-        run: |
-          cd lambda-example
-          zip -r ../lambda-function.zip ./*
-      
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -36,9 +21,9 @@ jobs:
           aws-region: us-west-2
     
       - name: Deploy Lambda
-        uses: aws-actions/aws-lambda-deploy@v1
+        uses: ./.github/actions/lambda-action
         with:
           function-name: test-lambda
-          zip-file-path: ./lambda-function.zip
+          code-artifacts-dir: ./dist
           memory-size: 256
           publish: true

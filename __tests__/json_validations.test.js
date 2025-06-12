@@ -18,7 +18,7 @@ describe('JSON Input Validations', () => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'zip-file-path': './test.zip'
+        'code-artifacts-dir': './src'
       };
       return inputs[name] || '';
     });
@@ -34,7 +34,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './src'
         };
         return inputs[name] || '';
       });
@@ -61,7 +61,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './src'
         };
         return inputs[name] || '';
       });
@@ -86,7 +86,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './src'
         };
         return inputs[name] || '';
       });
@@ -112,7 +112,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './src'
         };
         return inputs[name] || '';
       });
@@ -134,7 +134,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './src'
         };
         return inputs[name] || '';
       });
@@ -156,7 +156,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -178,7 +178,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -202,7 +202,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -227,7 +227,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -251,7 +251,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -276,7 +276,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -301,7 +301,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -323,7 +323,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -347,7 +347,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -373,7 +373,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -397,7 +397,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -425,8 +425,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
-        };
+          'code-artifacts-dir': './test-dir'        };
         return inputs[name] || '';
       });
       
@@ -447,7 +446,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -469,7 +468,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -493,7 +492,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -518,7 +517,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -543,7 +542,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -565,7 +564,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -589,7 +588,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });
@@ -616,7 +615,7 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'zip-file-path': './test.zip'
+          'code-artifacts-dir': './test-dir'
         };
         return inputs[name] || '';
       });

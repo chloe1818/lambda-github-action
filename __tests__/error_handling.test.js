@@ -27,7 +27,7 @@ describe('Error handling tests', () => {
       valid: true,
       functionName: 'test-function',
       region: 'us-east-1',
-      zipFilePath: './test.zip',
+      codeArtifactsDir: './src',
       role: 'arn:aws:iam::123456789012:role/lambda-role',
       runtime: 'nodejs18.x',
       handler: 'index.handler',
@@ -39,8 +39,12 @@ describe('Error handling tests', () => {
       architectures: 'x86_64'
     });
 
-    // Mock fs.readFile
+    // Mock fs functions
     fs.readFile.mockResolvedValue(Buffer.from('mock zip content'));
+    fs.readdir.mockResolvedValue(['index.js', 'package.json']);
+    fs.mkdir.mockResolvedValue();
+    fs.cp.mockResolvedValue();
+    fs.rm.mockResolvedValue();
   });
 
   test('should handle ThrottlingException with retries exhausted', async () => {
@@ -161,7 +165,7 @@ describe('Error handling tests', () => {
       valid: true,
       functionName: 'test-function',
       region: 'us-east-1',
-      zipFilePath: './test.zip',
+      codeArtifactsDir: './src',
       role: 'arn:aws:iam::123456789012:role/lambda-role',
       runtime: 'nodejs18.x',
       handler: 'index.handler'
@@ -262,7 +266,7 @@ describe('Error handling tests', () => {
     await run();
     
     // Verify the error was logged
-    expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Failed to update function code:'));
+    expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Failed to update function configuration:'));
     expect(core.debug).toHaveBeenCalledWith('Code update error stack trace');
   });
   

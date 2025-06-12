@@ -44,10 +44,9 @@ function validateRequiredInputs() {
     return { valid: false };
   }
 
-  const zipFilePath = core.getInput('zip-file-path');
   const codeArtifactsDir = core.getInput('code-artifacts-dir');
-  if (!zipFilePath && !codeArtifactsDir) {
-    core.setFailed('Either zip-file-path or code-artifacts-dir must be provided');
+  if (!codeArtifactsDir) {
+    core.setFailed('Code-artifacts-dir must be provided');
     return { valid: false };
   }
 
@@ -55,7 +54,6 @@ function validateRequiredInputs() {
     valid: true, 
     functionName, 
     region, 
-    zipFilePath, 
     codeArtifactsDir 
   };
 }
@@ -210,7 +208,15 @@ function getAdditionalInputs() {
   const functionDescription = core.getInput('function-description', { required: false });
   const packageType = 'Zip';
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
-  const publish = core.getBooleanInput('publish', { required: false }) || true;
+  
+  // Fix publish flag to properly handle boolean input
+  let publish;
+  try {
+    publish = core.getBooleanInput('publish', { required: false });
+  } catch (error) {
+    publish = true; // Default to true only if not explicitly set
+  }
+  
   const revisionId = core.getInput('revision-id', { required: false });
   const runtime = core.getInput('runtime', { required: false }) || 'nodejs20.x';
   const handler = core.getInput('handler', { required: false });
@@ -304,5 +310,6 @@ module.exports = {
   parseJsonInput,
   validateRoleArn,
   validateCodeSigningConfigArn,
-  validateKmsKeyArn
+  validateKmsKeyArn,
+  getAdditionalInputs
 };

@@ -7,18 +7,15 @@ inputs:
   region:
     description: 'AWS region'
     required: true
-  zip-file-path:
-    description: 'Path to the deployment ZIP file' 
-    required: false
   code-artifacts-dir:
     description: 'The path to a directory of code artifacts to zip and deploy to Lambda.'
-    required: false
+    required: true
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
     required: false
     default: 'true'
   dry-run:
-    description: 'Set true to validate the request parameters and access permissions without modifying the function code. Applicable for updating function code only.'
+    description: 'Set true to validate the request parameters and access permissions without modifying the function code. Applicable for updating function code only. Creating and updating function configuration will be skipped since they do not support dry run.'
     required: false
     default: 'true'
   revision-id: 
@@ -88,10 +85,6 @@ inputs:
   code-signing-config-arn:
     description: 'The ARN of a code-signing configuration to use on this function.'
     required: false
-  package-type:
-    description: 'The type of deployment package. Set to Image for container image and Zip for .zip file archive.'
-    required: false
-    default: 'Zip'
   tags:
     description: 'Tags to apply to the function as a JSON string (e.g. {"Environment":"Production","Team":"DevOps"})'
     required: false

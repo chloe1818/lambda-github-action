@@ -13,7 +13,7 @@ async function run() {
     }
 
     const {
-      functionName, region, zipFilePath, codeArtifactsDir,
+      functionName, region, codeArtifactsDir,
       ephemeralStorage, parsedMemorySize, timeout,
       role, codeSigningConfigArn, kmsKeyArn, sourceKmsKeyArn,
       environment, vpcConfig, deadLetterConfig, tracingConfig, 
@@ -26,14 +26,12 @@ async function run() {
       runtime, handler, architectures
     } = inputs;
     
-    let finalZipPath = zipFilePath;
-    if(codeArtifactsDir) {
-      if(dryRun) {
-        core.info('DRY RUN MODE: No AWS resources will be created or modified');
-      }
-      core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
-      finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
+    if (dryRun) {
+      core.info('DRY RUN MODE: No AWS resources will be created or modified');
     }
+    
+    core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
+    let finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
 
     const client = new LambdaClient({
       region
@@ -99,10 +97,20 @@ async function run() {
           core.setOutput('version', response.Version);
         }
       } catch (error) {
-        core.setFailed(`Failed to create function: ${error.message}`);
+        if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
+          core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
+        } else if (error.$metadata?.httpStatusCode >= 500) {
+          core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
+        } else if (error.name === 'AccessDeniedException') {
+          core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
+        } else {
+          core.setFailed(`Failed to create function: ${error.message}`);
+        }
+        
         if (error.stack) {
           core.debug(error.stack);
         }
+        throw error; 
       }
       core.info('Lambda function created successfully');
       return;
@@ -122,7 +130,7 @@ async function run() {
       KMSKeyArn: kmsKeyArn,
       EphemeralStorage: { Size: ephemeralStorage },
       VpcConfig: vpcConfig ? parsedVpcConfig : undefined,
-      Environment: environment ? parsedEnvironment: undefined,
+      Environment: environment ? { Variables: parsedEnvironment } : undefined,
       DeadLetterConfig: deadLetterConfig ? parsedDeadLetterConfig : undefined,
       TracingConfig: tracingConfig ? parsedTracingConfig : undefined,
       Layers: layers ? parsedLayers : undefined,
@@ -135,41 +143,52 @@ async function run() {
     if (configChanged) {
       if (dryRun) {
         core.info('[DRY RUN] Configuration updates are not simulated in dry run mode');
-      } else {
-        try {
-          let input = {
-            FunctionName: functionName,
-            Role: role,
-            Handler: handler,
-            Description: functionDescription,
-            MemorySize: parsedMemorySize,
-            Timeout: timeout,
-            Runtime: runtime,
-            KMSKeyArn: kmsKeyArn,
-            EphemeralStorage: { Size: ephemeralStorage },
-            VpcConfig: parsedVpcConfig,
-            Environment: environment ? { Variables: parsedEnvironment } : undefined,
-            DeadLetterConfig: parsedDeadLetterConfig,
-            TracingConfig: parsedTracingConfig,
-            Layers: parsedLayers,
-            FileSystemConfigs: parsedFileSystemConfigs,
-            ImageConfig: parsedImageConfig,
-            SnapStart: parsedSnapStart,
-            LoggingConfig: parsedLoggingConfig
-          };
-          
-          input = cleanNullKeys(input);
+        return;
+      } 
 
-          core.info(`Updating function configuration for ${functionName}`);
-          const command = new UpdateFunctionConfigurationCommand(input);
-          await client.send(command);
-          await waitForFunctionUpdated(client, functionName);
-        } catch (error) {
+      try {
+        let input = {
+          FunctionName: functionName,
+          Role: role,
+          Handler: handler,
+          Description: functionDescription,
+          MemorySize: parsedMemorySize,
+          Timeout: timeout,
+          Runtime: runtime,
+          KMSKeyArn: kmsKeyArn,
+          EphemeralStorage: { Size: ephemeralStorage },
+          VpcConfig: parsedVpcConfig,
+          Environment: environment ? { Variables: parsedEnvironment } : undefined,
+          DeadLetterConfig: parsedDeadLetterConfig,
+          TracingConfig: parsedTracingConfig,
+          Layers: parsedLayers,
+          FileSystemConfigs: parsedFileSystemConfigs,
+          ImageConfig: parsedImageConfig,
+          SnapStart: parsedSnapStart,
+          LoggingConfig: parsedLoggingConfig
+        };
+        
+        input = cleanNullKeys(input);
+
+        core.info(`Updating function configuration for ${functionName}`);
+        const command = new UpdateFunctionConfigurationCommand(input);
+        await client.send(command);
+        await waitForFunctionUpdated(client, functionName);
+      } catch (error) {
+        if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
+          core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
+        } else if (error.$metadata?.httpStatusCode >= 500) {
+          core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
+        } else if (error.name === 'AccessDeniedException') {
+          core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
+        } else {
           core.setFailed(`Failed to update function configuration: ${error.message}`);
-          if (error.stack) {
-            core.debug(error.stack);
-          }
         }
+        
+        if (error.stack) {
+          core.debug(error.stack);
+        }
+        throw error; 
       }
     } else {
       core.info('No configuration changes detected');
@@ -178,20 +197,23 @@ async function run() {
     core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
     
     try {
-      if (dryRun) {
-        core.info('DRY RUN MODE: No AWS resources will be created or modified');
-      }
-      
       let zipFileContent;
       try {
         zipFileContent = await fs.readFile(finalZipPath);
       } catch (error) {
-        if (dryRun) {
-          core.info(`[DRY RUN] Unable to read file ${finalZipPath}, using mock content for simulation`);
-          zipFileContent = Buffer.from('mock zip content for dry run');
-        } else {
-          throw error;
+        core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
+
+        if (error.code === 'ENOENT') {
+          core.error(`File not found. Ensure the code artifacts directory "${codeArtifactsDir}" contains the required files.`);
+        } else if (error.code === 'EACCES') {
+          core.error('Permission denied. Check file access permissions.');
         }
+        
+        if (error.stack) {
+          core.debug(error.stack);
+        }
+        
+        return;
       }
       
       let codeInput = {
@@ -206,16 +228,16 @@ async function run() {
       codeInput = cleanNullKeys(codeInput);
       
       if (dryRun) {
-        const logInput = {...codeInput};
-        if (logInput.ZipFile) {
-          logInput.ZipFile = '<binary zip data not shown>';
-        }
-        core.info('[DRY RUN] Would update function code with parameters:');
-        core.info(JSON.stringify(logInput, null, 2));
+        core.info(`[DRY RUN] Would update function code with parameters:`);
+        core.info(JSON.stringify(codeInput, null, 2));
+        codeInput.DryRun = true;
         
-        const mockArn = `arn:aws:lambda:${region}:000000000000:function:${functionName}`;
-        core.setOutput('function-arn', mockArn);
-        core.setOutput('version', '$LATEST');
+        const command = new UpdateFunctionCodeCommand(codeInput);
+        const response = await client.send(command);
+        
+        core.info('[DRY RUN] Function code validation passed');
+        core.setOutput('function-arn', response.FunctionArn || `arn:aws:lambda:${region}:000000000000:function:${functionName}`);
+        core.setOutput('version', response.Version || '$LATEST');
         core.info('[DRY RUN] Function code update simulation completed');
       } else {
         const command = new UpdateFunctionCodeCommand(codeInput);
@@ -226,7 +248,16 @@ async function run() {
         }
       }
     } catch (error) {
-      core.setFailed(`Failed to update function code: ${error.message}`);
+      if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
+        core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
+      } else if (error.$metadata?.httpStatusCode >= 500) {
+        core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
+      } else if (error.name === 'AccessDeniedException') {
+        core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
+      } else {
+        core.setFailed(`Failed to update function code: ${error.message}`);
+      }
+      
       if (error.stack) {
         core.debug(error.stack);
       }
@@ -293,8 +324,8 @@ async function checkFunctionExists(client, functionName) {
     const input = {
       FunctionName: functionName
     };
-    const command = new GetFunctionCommand(input);
-    const response = await client.send(command);
+    const command = new GetFunctionConfigurationCommand(input);
+    await client.send(command);
     return true;
   } catch (error) {
     if (error.name === 'ResourceNotFoundException') {
@@ -312,24 +343,61 @@ async function hasConfigurationChanged(currentConfig, updatedConfig) {
   const cleanedCurrent = cleanNullKeys(currentConfig);
   const cleanedUpdated = cleanNullKeys(updatedConfig);
   
+  let hasChanged = false;
+  
   for (const [key, value] of Object.entries(cleanedUpdated)) {
     if (value !== undefined) {
-      if (typeof value === 'object') {
-        const currentStr = JSON.stringify(cleanedCurrent[key] || {});
-        const updatedStr = JSON.stringify(value);
-        
-        if (currentStr !== updatedStr) {
+      // Check if this is a new parameter not in the current config
+      if (!(key in cleanedCurrent)) {
+        core.info(`Configuration difference detected in ${key}`);
+        hasChanged = true;
+        continue;
+      }
+      
+      if (typeof value === 'object' && value !== null) {
+        if (!deepEqual(cleanedCurrent[key] || {}, value)) {
           core.info(`Configuration difference detected in ${key}`);
-          return true;
+          hasChanged = true;
         }
       } else if (cleanedCurrent[key] !== value) {
         core.info(`Configuration difference detected in ${key}: ${cleanedCurrent[key]} -> ${value}`);
-        return true;
+        hasChanged = true;
       }
     }
   }
 
-  return false;
+  return hasChanged;
+}
+
+function deepEqual(obj1, obj2) {
+  if (obj1 === obj2) return true;
+  
+  if (typeof obj1 !== 'object' || obj1 === null ||
+      typeof obj2 !== 'object' || obj2 === null) {
+    return false;
+  }
+  
+  if (Array.isArray(obj1) && Array.isArray(obj2)) {
+    if (obj1.length !== obj2.length) return false;
+    
+    if (obj1.every(item => typeof item !== 'object' || item === null) &&
+        obj2.every(item => typeof item !== 'object' || item === null)) {
+      const sorted1 = [...obj1].sort();
+      const sorted2 = [...obj2].sort();
+      return sorted1.every((val, idx) => val === sorted2[idx]);
+    }
+    
+    return obj1.every((val, idx) => deepEqual(val, obj2[idx]));
+  }
+  
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  
+  if (keys1.length !== keys2.length) return false;
+  
+  return keys1.every(key => 
+    keys2.includes(key) && deepEqual(obj1[key], obj2[key])
+  );
 }
 
 async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) {
@@ -372,6 +440,8 @@ function isEmptyValue(value) {
   }
 
   if (Array.isArray(value)) {
+    if (value.length === 0) return true;
+    
     for (var element of value) {
       if (!isEmptyValue(element)) {
         return false;
@@ -381,6 +451,9 @@ function isEmptyValue(value) {
   }
 
   if (typeof value === 'object') {
+    // An empty object should return true
+    if (Object.keys(value).length === 0) return true;
+    
     for (var childValue of Object.values(value)) {
       if (!isEmptyValue(childValue)) {
         return false;
@@ -392,13 +465,22 @@ function isEmptyValue(value) {
   return false;
 }
 
-function emptyValueReplacer(_, value) {
+function emptyValueReplacer(key, value) {
+  if (key === 'VpcConfig' && typeof value === 'object' && value !== null) {
+    return value;
+  }
+  
+  if (['SubnetIds', 'SecurityGroupIds'].includes(key) && Array.isArray(value)) {
+    return value; 
+  }
+  
   if (isEmptyValue(value)) {
     return undefined;
   }
 
   if (Array.isArray(value)) {
-    return value.filter(e => !isEmptyValue(e));
+    const filtered = value.filter(e => !isEmptyValue(e));
+    return filtered.length ? filtered : undefined;
   }
 
   return value;
@@ -407,18 +489,39 @@ function emptyValueReplacer(_, value) {
 function cleanNullKeys(obj) {
   if (!obj) return obj;
   
+  if (obj.VpcConfig && typeof obj.VpcConfig === 'object') {
+    const { VpcConfig, ...rest } = obj;
+    
+    const cleanedRest = cleanRestOfObject(rest);
+    
+    const cleanedVpcConfig = {
+      SubnetIds: Array.isArray(VpcConfig.SubnetIds) ? VpcConfig.SubnetIds : [],
+      SecurityGroupIds: Array.isArray(VpcConfig.SecurityGroupIds) ? VpcConfig.SecurityGroupIds : []
+    };
+    
+    return { ...cleanedRest, VpcConfig: cleanedVpcConfig };
+  }
+  
+  return cleanRestOfObject(obj);
+}
+
+function cleanRestOfObject(obj) {
+  if (Array.isArray(obj)) {
+    const filtered = obj.filter(item => !isEmptyValue(item));
+    return filtered.length ? filtered : [];
+  }
+  
   const stringified = JSON.stringify(obj, emptyValueReplacer);
   
-  // Handle the case where everything was removed
   if (stringified === undefined || stringified === 'undefined' || stringified === 'null') {
-    return Array.isArray(obj) ? [] : {};
+    return {};
   }
   
   try {
     return JSON.parse(stringified);
   } catch (error) {
     core.debug(`Error parsing cleaned object: ${error.message}`);
-    return Array.isArray(obj) ? [] : {};
+    return {};
   }
 }
 

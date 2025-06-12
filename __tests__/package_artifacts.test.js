@@ -23,11 +23,10 @@ describe('packageCodeArtifacts function', () => {
     path.join.mockImplementation((...parts) => parts.join('/'));
     path.dirname.mockImplementation((p) => p.substring(0, p.lastIndexOf('/')));
     
-    // Mock fs.mkdir to succeed
+    // Mock fs functions
     fs.mkdir.mockResolvedValue(undefined);
-    
-    // Mock fs.cp to succeed
     fs.cp = jest.fn().mockResolvedValue(undefined);
+    fs.rm = jest.fn().mockResolvedValue(undefined);
     
     // Mock fs.readdir to return files and directories
     fs.readdir.mockResolvedValue([
@@ -51,7 +50,8 @@ describe('packageCodeArtifacts function', () => {
     const artifactsDir = '/mock/artifacts';
     const result = await packageCodeArtifacts(artifactsDir);
     
-    // Check temp directory creation
+    // Check temp directory cleanup and creation
+    expect(fs.rm).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true, force: true });
     expect(fs.mkdir).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true });
     
     // Check readdir was called for the artifacts directory
@@ -126,6 +126,19 @@ describe('packageCodeArtifacts function', () => {
       '/mock/cwd/lambda-package/.config', 
       { recursive: true }
     );
+  });
+
+  test('should handle error during directory cleanup', async () => {
+    // Mock fs.rm to fail but allow the test to continue
+    const rmError = new Error('Failed to remove directory');
+    fs.rm.mockRejectedValueOnce(rmError);
+    
+    const artifactsDir = '/mock/artifacts';
+    const result = await packageCodeArtifacts(artifactsDir);
+    
+    // The function should catch the error and continue
+    expect(fs.mkdir).toHaveBeenCalled();
+    expect(result).toBe('/mock/cwd/lambda-function.zip');
   });
 
   test('should handle error during directory creation', async () => {
