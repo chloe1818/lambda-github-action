@@ -235,9 +235,11 @@ async function run() {
         return;
       }
     
-      let codeInput = {
+      // Convert the zipFileContent to a base64-encoded string since we're getting
+    // a "@smithy/util-base64: toBase64 encoder function only accepts string | Uint8Array" error
+    let codeInput = {
         FunctionName: functionName,
-        ZipFile: "/home/runner/work/lambda-test/lambda-test/.github/actions/lambda-github-action/dist/lambda-package/index.js",
+        ZipFile: zipFileContent.toString('base64'),
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
