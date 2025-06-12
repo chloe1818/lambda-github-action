@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const validations = require('./validations');
+const { toBase64 } = require('@smithy/util-base64');
 
 async function run() {
   try {  
@@ -224,10 +225,12 @@ async function run() {
         
         return;
       }
+
+      const base64Zip = toBase64(zipContents);
     
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: zipFileContent,
+        ZipFile: base64Zip,
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
