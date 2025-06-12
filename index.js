@@ -206,8 +206,9 @@ async function run() {
     // Update Function Code
     core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
     
+    let zipFileContent;
+
     try {
-      let zipFileContent;
       try {
         zipFileContent = await fs.readFile(finalZipPath);
       } catch (error) {
@@ -225,12 +226,10 @@ async function run() {
         
         return;
       }
-
-      const base64Zip = toBase64(zipFileContent);
     
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: base64Zip,
+        ZipFile: zipFileContent,
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
