@@ -208,7 +208,6 @@ async function run() {
     try {
       let zipFileContent;
       try {
-        // Read the ZIP file as a Buffer (binary data)
         zipFileContent = await fs.readFile(finalZipPath);
         
         if (!Buffer.isBuffer(zipFileContent)) {
@@ -216,24 +215,9 @@ async function run() {
           zipFileContent = Buffer.from(zipFileContent);
         }
         
-        // Debug the ZIP file content
         const stats = await fs.stat(finalZipPath);
         core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
         
-        // Verify ZIP integrity
-        try {
-          const zipCheck = new AdmZip(zipFileContent);
-          const entries = zipCheck.getEntries();
-          core.info(`ZIP file validation passed - contains ${entries.length} entries`);
-          
-          // List all entries for debugging
-          entries.forEach((entry, i) => {
-            core.info(`Entry ${i + 1}: ${entry.entryName} (${entry.header.size} bytes)`);
-          });
-        } catch (zipError) {
-          core.error(`ZIP validation error: ${zipError.message}`);
-          throw new Error(`Invalid ZIP file structure: ${zipError.message}`);
-        }
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
 
@@ -250,17 +234,15 @@ async function run() {
         return;
       }
     
-      // Use the raw Buffer for ZipFile - AWS SDK will handle Base64 encoding internally
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: zipFileContent, // AWS SDK v3 accepts Buffer directly
+        ZipFile: zipFileContent.toString('base64'), 
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
         SourceKmsKeyArn: sourceKmsKeyArn,
       };
       
-      // Debug log for troubleshooting
       core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
       
       codeInput = cleanNullKeys(codeInput);
@@ -321,146 +303,182 @@ async function run() {
   }
 }
 
+// async function packageCodeArtifacts(artifactsDir) {
+//   const tempDir = path.join(process.cwd(), 'lambda-package');
+//   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
+
+//   try {
+//     // Clean up and recreate temp directory
+//     try {
+//       await fs.rm(tempDir, { recursive: true, force: true });
+//     } catch (error) {
+//       // Ignore errors if directory doesn't exist
+//     }
+    
+//     await fs.mkdir(tempDir, { recursive: true });
+
+//     // Resolve the artifacts directory path - handle both absolute and relative paths
+//     const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
+//       ? artifactsDir 
+//       : path.resolve(process.cwd(), artifactsDir);
+    
+//     core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
+    
+//     // Check if directory exists before trying to read it
+//     try {
+//       await fs.access(resolvedArtifactsDir);
+//     } catch (error) {
+//       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
+//     }
+    
+//     const sourceFiles = await fs.readdir(resolvedArtifactsDir);
+    
+//     if (sourceFiles.length === 0) {
+//       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
+//     }
+    
+//     core.info(`Found ${sourceFiles.length} files/directories to copy`);
+    
+//     for (const file of sourceFiles) {
+//       const sourcePath = path.join(resolvedArtifactsDir, file);
+//       const destPath = path.join(tempDir, file);
+      
+//       core.info(`Copying ${sourcePath} to ${destPath}`);
+      
+//       await fs.cp(
+//         sourcePath,
+//         destPath,
+//         { recursive: true }
+//       );
+//     }
+
+//     // Use a completely different approach to create the zip file
+//     // We'll use the Node.js child_process to call system zip command
+//     // which has better compatibility with AWS Lambda
+//     const { execSync } = require('child_process');
+    
+//     try {
+//       core.info('Creating ZIP file using system zip command');
+      
+//       // First, check if zip command exists
+//       try {
+//         execSync('which zip', { stdio: 'pipe' });
+//         core.info('Zip command found, proceeding with zip creation');
+//       } catch (err) {
+//         core.info('Zip command not found, falling back to AdmZip');
+//         // Fall back to AdmZip if zip command not found
+//         const zip = new AdmZip();
+//         const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
+        
+//         for (const file of tempFiles) {
+//           const fullPath = path.join(tempDir, file.name);
+          
+//           if (file.isDirectory()) {
+//             core.info(`Adding directory: ${file.name}`);
+//             zip.addLocalFolder(fullPath, file.name);
+//           } else {
+//             core.info(`Adding file: ${file.name}`);
+//             zip.addLocalFile(fullPath);
+//           }
+//         }
+        
+//         zip.writeZip(zipPath);
+        
+//         core.info(`ZIP file created using AdmZip`);
+//         return zipPath;
+//       }
+      
+//       // Create the zip file using system zip command
+//       // Change to the tempDir first so files are at the root of the zip
+//       const zipCommand = `cd "${tempDir}" && zip -r "${zipPath}" ./*`;
+//       core.info(`Executing: ${zipCommand}`);
+      
+//       execSync(zipCommand, { stdio: 'inherit' });
+      
+//       // Verify the zip file was created
+//       const stats = await fs.stat(zipPath);
+//       core.info(`ZIP file created using system zip command: ${zipPath} (${stats.size} bytes)`);
+//     } catch (error) {
+//       core.error(`Error creating zip with system command: ${error.message}`);
+      
+//       // Fall back to simple approach with AdmZip as last resort
+//       core.info('Falling back to simple approach with AdmZip');
+//       const fallbackZip = new AdmZip();
+      
+//       // Just add all files directly with no special options
+//       const tempFiles = await fs.readdir(tempDir);
+//       for (const file of tempFiles) {
+//         const fullPath = path.join(tempDir, file);
+//         const stat = await fs.stat(fullPath);
+        
+//         if (stat.isDirectory()) {
+//           core.info(`Adding directory (simple): ${file}`);
+//           fallbackZip.addLocalFolder(fullPath, file);
+//         } else {
+//           core.info(`Adding file (simple): ${file}`);
+//           fallbackZip.addLocalFile(fullPath);
+//         }
+//       }
+      
+//       fallbackZip.writeZip(zipPath);
+//     }
+    
+//     // Verify the ZIP file is not empty
+//     try {
+//       const stats = await fs.stat(zipPath);
+//       if (stats.size === 0 || stats.size < 100) { // Basic check for very small files
+//         throw new Error(`Generated ZIP file is empty or too small (${stats.size} bytes)`);
+//       }
+      
+//       // Check ZIP content
+//       const zipCheck = new AdmZip(zipPath);
+//       const entries = zipCheck.getEntries();
+      
+//       if (entries.length === 0) {
+//         throw new Error('Generated ZIP file contains no files');
+//       }
+      
+//       core.info(`ZIP file created successfully with ${entries.length} files (${stats.size} bytes)`);
+//     } catch (error) {
+//       throw new Error(`Failed to verify the created ZIP file: ${error.message}`);
+//     }
+    
+//     return zipPath;
+//   } catch (error) {
+//     core.error(`Failed to package artifacts: ${error.message}`);
+//     throw error;
+//   }
+// }
+
 async function packageCodeArtifacts(artifactsDir) {
   const tempDir = path.join(process.cwd(), 'lambda-package');
   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
-
-  try {
-    // Clean up and recreate temp directory
+  
     try {
-      await fs.rm(tempDir, { recursive: true, force: true });
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
-      // Ignore errors if directory doesn't exist
-    }
-    
-    await fs.mkdir(tempDir, { recursive: true });
-
-    // Resolve the artifacts directory path - handle both absolute and relative paths
-    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
-      ? artifactsDir 
-      : path.resolve(process.cwd(), artifactsDir);
-    
-    core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
-    
-    // Check if directory exists before trying to read it
-    try {
-      await fs.access(resolvedArtifactsDir);
-    } catch (error) {
-      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
-    }
-    
-    const sourceFiles = await fs.readdir(resolvedArtifactsDir);
-    
-    if (sourceFiles.length === 0) {
-      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
-    }
-    
-    core.info(`Found ${sourceFiles.length} files/directories to copy`);
-    
-    for (const file of sourceFiles) {
-      const sourcePath = path.join(resolvedArtifactsDir, file);
-      const destPath = path.join(tempDir, file);
-      
-      core.info(`Copying ${sourcePath} to ${destPath}`);
-      
-      await fs.cp(
-        sourcePath,
-        destPath,
+      }
+  
+      await fs.mkdir(tempDir, { recursive: true });
+  
+      core.info(`Copying artifacts from ${artifactsDir} to ${tempDir}`);
+  
+    const files = await fs.readdir(artifactsDir);
+  
+      for (const file of files) {
+        await fs.cp(
+          path.join(artifactsDir, file),
+        path.join(tempDir, file),
         { recursive: true }
       );
-    }
+      }
 
-    // Use a completely different approach to create the zip file
-    // We'll use the Node.js child_process to call system zip command
-    // which has better compatibility with AWS Lambda
-    const { execSync } = require('child_process');
-    
-    try {
-      core.info('Creating ZIP file using system zip command');
-      
-      // First, check if zip command exists
-      try {
-        execSync('which zip', { stdio: 'pipe' });
-        core.info('Zip command found, proceeding with zip creation');
-      } catch (err) {
-        core.info('Zip command not found, falling back to AdmZip');
-        // Fall back to AdmZip if zip command not found
-        const zip = new AdmZip();
-        const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
-        
-        for (const file of tempFiles) {
-          const fullPath = path.join(tempDir, file.name);
-          
-          if (file.isDirectory()) {
-            core.info(`Adding directory: ${file.name}`);
-            zip.addLocalFolder(fullPath, file.name);
-          } else {
-            core.info(`Adding file: ${file.name}`);
-            zip.addLocalFile(fullPath);
-          }
-        }
-        
-        zip.writeZip(zipPath);
-        
-        core.info(`ZIP file created using AdmZip`);
-        return zipPath;
-      }
-      
-      // Create the zip file using system zip command
-      // Change to the tempDir first so files are at the root of the zip
-      const zipCommand = `cd "${tempDir}" && zip -r "${zipPath}" ./*`;
-      core.info(`Executing: ${zipCommand}`);
-      
-      execSync(zipCommand, { stdio: 'inherit' });
-      
-      // Verify the zip file was created
-      const stats = await fs.stat(zipPath);
-      core.info(`ZIP file created using system zip command: ${zipPath} (${stats.size} bytes)`);
-    } catch (error) {
-      core.error(`Error creating zip with system command: ${error.message}`);
-      
-      // Fall back to simple approach with AdmZip as last resort
-      core.info('Falling back to simple approach with AdmZip');
-      const fallbackZip = new AdmZip();
-      
-      // Just add all files directly with no special options
-      const tempFiles = await fs.readdir(tempDir);
-      for (const file of tempFiles) {
-        const fullPath = path.join(tempDir, file);
-        const stat = await fs.stat(fullPath);
-        
-        if (stat.isDirectory()) {
-          core.info(`Adding directory (simple): ${file}`);
-          fallbackZip.addLocalFolder(fullPath, file);
-        } else {
-          core.info(`Adding file (simple): ${file}`);
-          fallbackZip.addLocalFile(fullPath);
-        }
-      }
-      
-      fallbackZip.writeZip(zipPath);
-    }
-    
-    // Verify the ZIP file is not empty
-    try {
-      const stats = await fs.stat(zipPath);
-      if (stats.size === 0 || stats.size < 100) { // Basic check for very small files
-        throw new Error(`Generated ZIP file is empty or too small (${stats.size} bytes)`);
-      }
-      
-      // Check ZIP content
-      const zipCheck = new AdmZip(zipPath);
-      const entries = zipCheck.getEntries();
-      
-      if (entries.length === 0) {
-        throw new Error('Generated ZIP file contains no files');
-      }
-      
-      core.info(`ZIP file created successfully with ${entries.length} files (${stats.size} bytes)`);
-    } catch (error) {
-      throw new Error(`Failed to verify the created ZIP file: ${error.message}`);
-    }
-    
+    core.info('Creating ZIP file');
+    const zip = new AdmZip();
+    zip.addLocalFolder(tempDir);
+    zip.writeZip(zipPath);
+
     return zipPath;
   } catch (error) {
     core.error(`Failed to package artifacts: ${error.message}`);
