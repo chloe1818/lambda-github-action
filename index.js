@@ -206,13 +206,13 @@ async function run() {
       try {
       let zipFileContent;
       try {
-        zipFileContent = await fs.readFile(finalZipPath);
-        // Ensure zipFileContent is a proper Uint8Array for AWS SDK v3
-        if (!Buffer.isBuffer(zipFileContent) && !(zipFileContent instanceof Uint8Array)) {
-          core.info(`Converting ZIP file content to Uint8Array, current type: ${typeof zipFileContent}`);
-          zipFileContent = new Uint8Array(zipFileContent);
-        }
-        core.info(`ZIP file read successfully, size: ${zipFileContent.length} bytes, type: ${typeof zipFileContent}, isUint8Array: ${zipFileContent instanceof Uint8Array}`);
+        // Read the ZIP file as a Buffer
+        const zipBuffer = await fs.readFile(finalZipPath);
+        
+        // Convert the Buffer to a Base64 string
+        zipFileContent = zipBuffer.toString('base64');
+        
+        core.info(`ZIP file read successfully and converted to Base64 string, size: ${zipBuffer.length} bytes, string length: ${zipFileContent.length}`);
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
 
@@ -239,7 +239,7 @@ async function run() {
       };
       
       // Debug log for troubleshooting
-      core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, isUint8Array: ${zipFileContent instanceof Uint8Array}, length: ${zipFileContent.length}`);
+      core.info(`ZipFile type: ${typeof zipFileContent}, is string: ${typeof zipFileContent === 'string'}, length: ${zipFileContent.length}`);
       
       codeInput = cleanNullKeys(codeInput);
       
