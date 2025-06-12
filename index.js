@@ -209,15 +209,6 @@ async function run() {
       let zipFileContent;
       try {
         zipFileContent = await fs.readFile(finalZipPath);
-        
-        // if (!Buffer.isBuffer(zipFileContent)) {
-        //   core.info(`Converting file content to Buffer, current type: ${typeof zipFileContent}`);
-        //   zipFileContent = Buffer.from(zipFileContent);
-        // }
-        
-        // const stats = await fs.stat(finalZipPath);
-        // core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
-        
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
 
@@ -234,17 +225,9 @@ async function run() {
         return;
       }
     
-      // Ensure proper base64 encoding
-      const base64ZipContent = zipFileContent.toString('base64');
-      
-      // Validate base64 encoding - just for logging
-      const validBase64 = /^[A-Za-z0-9+/=]+$/.test(base64ZipContent);
-      core.info(`Base64 encoding validation: ${validBase64 ? 'PASSED' : 'FAILED'}`);
-      core.info(`Base64 encoded length: ${base64ZipContent.length} characters`);
-      
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: base64ZipContent,
+        Code: { ZipFile: zipFileContent },
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
