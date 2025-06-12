@@ -344,6 +344,26 @@ async function packageCodeArtifacts(artifactsDir) {
     zip.addLocalFolder(tempDir);
     zip.writeZip(zipPath);
     
+    // Verify the ZIP file is not empty
+    try {
+      const stats = await fs.stat(zipPath);
+      if (stats.size === 0 || stats.size < 100) { // Basic check for very small files
+        throw new Error(`Generated ZIP file is empty or too small (${stats.size} bytes)`);
+      }
+      
+      // Check ZIP content
+      const zipCheck = new AdmZip(zipPath);
+      const entries = zipCheck.getEntries();
+      
+      if (entries.length === 0) {
+        throw new Error('Generated ZIP file contains no files');
+      }
+      
+      core.info(`ZIP file created successfully with ${entries.length} files (${stats.size} bytes)`);
+    } catch (error) {
+      throw new Error(`Failed to verify the created ZIP file: ${error.message}`);
+    }
+    
     return zipPath;
   } catch (error) {
     core.error(`Failed to package artifacts: ${error.message}`);
