@@ -238,7 +238,7 @@ async function run() {
       
       core.info(`Original buffer length: ${zipFileContent.length} bytes`);
       
-      codeInput = cleanNullKeys(codeInput);
+      //codeInput = cleanNullKeys(codeInput);
       
       if (dryRun) {
         core.info(`[DRY RUN] Would update function code with parameters:`);
