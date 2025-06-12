@@ -226,7 +226,7 @@ async function run() {
         return;
       }
 
-      const base64Zip = toBase64(zipContents);
+      const base64Zip = toBase64(zipFileContent);
     
       let codeInput = {
         FunctionName: functionName,
