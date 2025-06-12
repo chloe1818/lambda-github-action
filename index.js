@@ -56,6 +56,11 @@ async function run() {
       // Create function
       try {
         const zipFileContent = await fs.readFile(finalZipPath);
+        
+        core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`);
+        core.info(`Type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, isUint8Array: ${zipFileContent instanceof Uint8Array}`);
+        
+        core.info('Creating Lambda function with deployment package');
 
         let input = {
           FunctionName: functionName,
