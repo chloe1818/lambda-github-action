@@ -1,0 +1,61 @@
+name: Deploy AWS Lambda Function
+# Trigger workflow on push to main or pull request
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+       
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    # Add permissions needed for OIDC authentication with AWS
+    permissions:
+      id-token: write
+      contents: read
+       
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Checkout private action
+        uses: actions/checkout@v3
+        with:
+          repository: chloe1818/lambda-github-action
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}
+          path: .github/actions/lambda-github-action
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install and build GitHub Action
+        working-directory: .github/actions/lambda-github-action
+        run: |
+          npm ci
+          npm run build
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::660753258521:role/GitHubActionsDeployRole
+          aws-region: us-west-2
+    
+      - name: Deploy Lambda
+        uses: ./.github/actions/lambda-github-action
+        with:
+          function-name: test-lambda
+          code-artifacts-dir: ./lambda-test-main/dist
+          region: us-west-2
+          memory-size: 256
+          dry-run: false
+          publish: true
+          role: arn:aws:iam::660753258521:role/lambda-test-execution-role
+          handler: index.handler
+          runtime: nodejs18.x
+          architectures: x86_64
+          timeout: 3
+          ephemeral-storage: 512
