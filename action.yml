@@ -53,7 +53,7 @@ inputs:
   runtime:
     description: 'The identifier of the runtime. Required for .zip file'
     required: false
-    default: 'nodejs'
+    default: 'nodejs22.x'
   dead-letter-config:
     description: 'Specifies the queue or topic where Lambda sends asynchronous events when they fail processing.'
     required: false
