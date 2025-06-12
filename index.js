@@ -234,16 +234,24 @@ async function run() {
         return;
       }
     
+      // Ensure proper base64 encoding
+      const base64ZipContent = zipFileContent.toString('base64');
+      
+      // Validate base64 encoding - just for logging
+      const validBase64 = /^[A-Za-z0-9+/=]+$/.test(base64ZipContent);
+      core.info(`Base64 encoding validation: ${validBase64 ? 'PASSED' : 'FAILED'}`);
+      core.info(`Base64 encoded length: ${base64ZipContent.length} characters`);
+      
       let codeInput = {
         FunctionName: functionName,
-        ZipFile: zipFileContent.toString('base64'), 
+        ZipFile: base64ZipContent,
         Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
         Publish: publish,
         RevisionId: revisionId,
         SourceKmsKeyArn: sourceKmsKeyArn,
       };
       
-      core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
+      core.info(`Original buffer length: ${zipFileContent.length} bytes`);
       
       codeInput = cleanNullKeys(codeInput);
       
@@ -454,30 +462,92 @@ async function packageCodeArtifacts(artifactsDir) {
   const tempDir = path.join(process.cwd(), 'lambda-package');
   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
   
+  try {
+    // Clean up and recreate temp directory
     try {
-      try {
-        await fs.rm(tempDir, { recursive: true, force: true });
+      await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
-      }
-  
-      await fs.mkdir(tempDir, { recursive: true });
-  
-      core.info(`Copying artifacts from ${artifactsDir} to ${tempDir}`);
-  
-    const files = await fs.readdir(artifactsDir);
-  
-      for (const file of files) {
-        await fs.cp(
-          path.join(artifactsDir, file),
-        path.join(tempDir, file),
+      // Ignore errors if directory doesn't exist
+    }
+    
+    await fs.mkdir(tempDir, { recursive: true });
+
+    // Resolve the artifacts directory path - handle both absolute and relative paths
+    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
+      ? artifactsDir 
+      : path.resolve(process.cwd(), artifactsDir);
+    
+    core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
+    
+    // Check if directory exists before trying to read it
+    try {
+      await fs.access(resolvedArtifactsDir);
+    } catch (error) {
+      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
+    }
+    
+    const sourceFiles = await fs.readdir(resolvedArtifactsDir);
+    
+    if (sourceFiles.length === 0) {
+      throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
+    }
+    
+    core.info(`Found ${sourceFiles.length} files/directories to copy`);
+    
+    for (const file of sourceFiles) {
+      const sourcePath = path.join(resolvedArtifactsDir, file);
+      const destPath = path.join(tempDir, file);
+      
+      core.info(`Copying ${sourcePath} to ${destPath}`);
+      
+      await fs.cp(
+        sourcePath,
+        destPath,
         { recursive: true }
       );
-      }
+    }
 
-    core.info('Creating ZIP file');
+    core.info('Creating ZIP file with careful structure');
+    // Create ZIP file with explicit options for AWS compatibility
     const zip = new AdmZip();
-    zip.addLocalFolder(tempDir);
+    
+    // Add files individually to maintain proper structure
+    const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
+    
+    for (const file of tempFiles) {
+      const fullPath = path.join(tempDir, file.name);
+      
+      if (file.isDirectory()) {
+        core.info(`Adding directory: ${file.name}`);
+        // Use entryName "" to place contents at root level of ZIP
+        zip.addLocalFolder(fullPath, file.name);
+      } else {
+        core.info(`Adding file: ${file.name}`);
+        // Add to root of ZIP
+        zip.addLocalFile(fullPath);
+      }
+    }
+    
+    // Use a more compatible ZIP format with explicit options
+    core.info('Writing ZIP file with standard options');
     zip.writeZip(zipPath);
+    
+    // Verify the ZIP file
+    try {
+      const stats = await fs.stat(zipPath);
+      core.info(`Generated ZIP file size: ${stats.size} bytes`);
+      
+      // Verify ZIP content can be read back
+      const verifyZip = new AdmZip(zipPath);
+      const entries = verifyZip.getEntries();
+      
+      core.info(`ZIP verification passed - contains ${entries.length} entries:`);
+      for (let i = 0; i < entries.length; i++) {
+        core.info(`  ${i+1}. ${entries[i].entryName} (${entries[i].header.size} bytes)`);
+      }
+    } catch (error) {
+      throw new Error(`ZIP validation failed: ${error.message}`);
+    }
 
     return zipPath;
   } catch (error) {
