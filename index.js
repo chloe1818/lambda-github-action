@@ -201,18 +201,22 @@ async function run() {
       core.info('No configuration changes detected');
     }
 
-    core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
+    core.info(`Updating function code for ${functionName} with ${zipFileContent}`);
     
       try {
       let zipFileContent;
       try {
-        // Read the ZIP file as a Buffer
-        const zipBuffer = await fs.readFile(finalZipPath);
+        // Read the ZIP file as a Buffer (binary data)
+        zipFileContent = await fs.readFile(finalZipPath);
         
-        // Convert the Buffer to a Base64 string
-        zipFileContent = zipBuffer.toString('base64');
+        if (!Buffer.isBuffer(zipFileContent)) {
+          core.info(`Converting file content to Buffer, current type: ${typeof zipFileContent}`);
+          zipFileContent = Buffer.from(zipFileContent);
+        }
         
-        core.info(`ZIP file read successfully and converted to Base64 string, size: ${zipBuffer.length} bytes, string length: ${zipFileContent.length}`);
+        // Debug the ZIP file content
+        const stats = await fs.stat(finalZipPath);
+        core.info(`ZIP file read successfully as Buffer, file size: ${stats.size} bytes, buffer length: ${zipFileContent.length}`);
       } catch (error) {
         core.setFailed(`Failed to read Lambda deployment package at ${finalZipPath}: ${error.message}`);
 
@@ -239,7 +243,7 @@ async function run() {
       };
       
       // Debug log for troubleshooting
-      core.info(`ZipFile type: ${typeof zipFileContent}, is string: ${typeof zipFileContent === 'string'}, length: ${zipFileContent.length}`);
+      core.info(`ZipFile type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, length: ${zipFileContent.length} bytes`);
       
       codeInput = cleanNullKeys(codeInput);
       
@@ -327,15 +331,15 @@ async function packageCodeArtifacts(artifactsDir) {
       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
     }
     
-    const files = await fs.readdir(resolvedArtifactsDir);
+    const sourceFiles = await fs.readdir(resolvedArtifactsDir);
     
-    if (files.length === 0) {
+    if (sourceFiles.length === 0) {
       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
     }
     
-    core.info(`Found ${files.length} files/directories to copy`);
+    core.info(`Found ${sourceFiles.length} files/directories to copy`);
     
-    for (const file of files) {
+    for (const file of sourceFiles) {
       const sourcePath = path.join(resolvedArtifactsDir, file);
       const destPath = path.join(tempDir, file);
       
@@ -350,7 +354,23 @@ async function packageCodeArtifacts(artifactsDir) {
 
     core.info('Creating ZIP file');
     const zip = new AdmZip();
-    zip.addLocalFolder(tempDir);
+    
+    // Add files one by one to ensure proper ZIP structure
+    const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
+    
+    for (const file of tempFiles) {
+      const fullPath = path.join(tempDir, file.name);
+      
+      if (file.isDirectory()) {
+        core.info(`Adding directory: ${file.name}`);
+        zip.addLocalFolder(fullPath, file.name);
+      } else {
+        core.info(`Adding file: ${file.name}`);
+        zip.addLocalFile(fullPath);
+      }
+    }
+    
+    // Write the zip with a specific compression method
     zip.writeZip(zipPath);
     
     // Verify the ZIP file is not empty
