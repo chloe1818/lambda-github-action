@@ -64,21 +64,21 @@ function validateArnInputs() {
   const kmsKeyArn = core.getInput('kms-key-arn', { required: false });
   const sourceKmsKeyArn = core.getInput('source-kms-key-arn', { required: false });
   
-  if (role && !validateRoleArn(role)) {
-    return { valid: false };
-  }
+  // if (role && !validateRoleArn(role)) {
+  //   return { valid: false };
+  // }
   
-  if (codeSigningConfigArn && !validateCodeSigningConfigArn(codeSigningConfigArn)) {
-    return { valid: false };
-  }
+  // if (codeSigningConfigArn && !validateCodeSigningConfigArn(codeSigningConfigArn)) {
+  //   return { valid: false };
+  // }
   
-  if (kmsKeyArn && !validateKmsKeyArn(kmsKeyArn)) {
-    return { valid: false };
-  }
+  // if (kmsKeyArn && !validateKmsKeyArn(kmsKeyArn)) {
+  //   return { valid: false };
+  // }
   
-  if (sourceKmsKeyArn && !validateKmsKeyArn(sourceKmsKeyArn)) {
-    return { valid: false };
-  }
+  // if (sourceKmsKeyArn && !validateKmsKeyArn(sourceKmsKeyArn)) {
+  //   return { valid: false };
+  // }
 
   return {
     valid: true,
@@ -283,10 +283,10 @@ function validateAllInputs() {
     return { valid: false };
   }
   
-  // const arnInputs = validateArnInputs();
-  // if (!arnInputs.valid) {
-  //   return { valid: false };
-  // }
+  const arnInputs = validateArnInputs();
+  if (!arnInputs.valid) {
+    return { valid: false };
+  }
   
   const jsonInputs = validateJsonInputs();
   if (!jsonInputs.valid) {
@@ -299,7 +299,7 @@ function validateAllInputs() {
     valid: true,
     ...requiredInputs,
     ...numericInputs,
-    // ...arnInputs,
+    ...arnInputs,
     ...jsonInputs,
     ...additionalInputs
   };
