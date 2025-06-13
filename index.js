@@ -63,38 +63,68 @@ async function run() {
  
         core.info('Creating Lambda function with deployment package');
 
-        let input = {
+        // let input = {
+        //   FunctionName: functionName,
+        //   Runtime: runtime,
+        //   Role: role,
+        //   Handler: handler,
+        //   Code: {
+        //     ZipFile: zipFileContent
+        //   },
+        //   Description: functionDescription,
+        //   MemorySize: parsedMemorySize,
+        //   Timeout: timeout,
+        //   PackageType: packageType,
+        //   Publish: publish,
+        //   Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
+        //   EphemeralStorage: { Size: ephemeralStorage },
+        //   RevisionId: revisionId,
+        //   VpcConfig: parsedVpcConfig,
+        //   Environment: environment ? { Variables: parsedEnvironment } : undefined,
+        //   DeadLetterConfig: parsedDeadLetterConfig,
+        //   TracingConfig: parsedTracingConfig,
+        //   Layers: parsedLayers,
+        //   FileSystemConfigs: parsedFileSystemConfigs,
+        //   ImageConfig: parsedImageConfig,
+        //   SnapStart: parsedSnapStart,
+        //   LoggingConfig: parsedLoggingConfig,
+        //   Tags: parsedTags,
+        //   KMSKeyArn: kmsKeyArn,
+        //   CodeSigningConfigArn: codeSigningConfigArn,
+        //   SourceKmsKeyArn: sourceKmsKeyArn
+        // };
+        
+        //input = cleanNullKeys(input);
+        const input = {
           FunctionName: functionName,
           Runtime: runtime,
           Role: role,
           Handler: handler,
           Code: {
-            ZipFile: zipFileContent
+            ZipFile: await fs.readFile(finalZipPath)
           },
           Description: functionDescription,
-          MemorySize: parsedMemorySize,
+          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
           Timeout: timeout,
           PackageType: packageType,
           Publish: publish,
-          Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
+          Architectures: [architectures],
           EphemeralStorage: { Size: ephemeralStorage },
-          RevisionId: revisionId,
-          VpcConfig: parsedVpcConfig,
-          Environment: environment ? { Variables: parsedEnvironment } : undefined,
-          DeadLetterConfig: parsedDeadLetterConfig,
-          TracingConfig: parsedTracingConfig,
-          Layers: parsedLayers,
-          FileSystemConfigs: parsedFileSystemConfigs,
-          ImageConfig: parsedImageConfig,
-          SnapStart: parsedSnapStart,
-          LoggingConfig: parsedLoggingConfig,
-          Tags: parsedTags,
-          KMSKeyArn: kmsKeyArn,
-          CodeSigningConfigArn: codeSigningConfigArn,
-          SourceKmsKeyArn: sourceKmsKeyArn
-        };
-        
-        //input = cleanNullKeys(input);
+          ...(revisionId && { RevisionId: revisionId }),
+          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
+          ...(environment && { Environment: { Variables: parsedEnvironment } }),
+          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
+          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
+          ...(layers && { Layers: parsedLayers }),
+          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
+          ...(imageConfig && { ImageConfig: parsedImageConfig }),
+          ...(snapStart && { SnapStart: parsedSnapStart }),
+          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig }),
+          ...(tags && { Tags: parsedTags }),
+          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
+          ...(codeSigningConfigArn && { CodeSigningConfigArn: codeSigningConfigArn }),
+          ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
+	      };
 
         core.info(`Creating new Lambda function: ${functionName}`);
         const command = new CreateFunctionCommand(input);
