@@ -299,7 +299,7 @@ function validateAllInputs() {
     valid: true,
     ...requiredInputs,
     ...numericInputs,
-    ...arnInputs,
+    // ...arnInputs,
     ...jsonInputs,
     ...additionalInputs
   };
