@@ -283,10 +283,10 @@ function validateAllInputs() {
     return { valid: false };
   }
   
-  const arnInputs = validateArnInputs();
-  if (!arnInputs.valid) {
-    return { valid: false };
-  }
+  // const arnInputs = validateArnInputs();
+  // if (!arnInputs.valid) {
+  //   return { valid: false };
+  // }
   
   const jsonInputs = validateJsonInputs();
   if (!jsonInputs.valid) {
