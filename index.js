@@ -63,53 +63,21 @@ async function run() {
  
         core.info('Creating Lambda function with deployment package');
 
-        // let input = {
-        //   FunctionName: functionName,
-        //   Runtime: runtime,
-        //   Role: role,
-        //   Handler: handler,
-        //   Code: {
-        //     ZipFile: zipFileContent
-        //   },
-        //   Description: functionDescription,
-        //   MemorySize: parsedMemorySize,
-        //   Timeout: timeout,
-        //   PackageType: packageType,
-        //   Publish: publish,
-        //   Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
-        //   EphemeralStorage: { Size: ephemeralStorage },
-        //   RevisionId: revisionId,
-        //   VpcConfig: parsedVpcConfig,
-        //   Environment: environment ? { Variables: parsedEnvironment } : undefined,
-        //   DeadLetterConfig: parsedDeadLetterConfig,
-        //   TracingConfig: parsedTracingConfig,
-        //   Layers: parsedLayers,
-        //   FileSystemConfigs: parsedFileSystemConfigs,
-        //   ImageConfig: parsedImageConfig,
-        //   SnapStart: parsedSnapStart,
-        //   LoggingConfig: parsedLoggingConfig,
-        //   Tags: parsedTags,
-        //   KMSKeyArn: kmsKeyArn,
-        //   CodeSigningConfigArn: codeSigningConfigArn,
-        //   SourceKmsKeyArn: sourceKmsKeyArn
-        // };
-        
-        //input = cleanNullKeys(input);
         const input = {
           FunctionName: functionName,
-          Runtime: runtime,
-          Role: role,
-          Handler: handler,
           Code: {
             ZipFile: await fs.readFile(finalZipPath)
           },
-          Description: functionDescription,
+          ...(runtime && { Runtime: runtime }),
+          ...(role && { Role: role }),
+          ...(handler && { Handler: handler }),
+          ...(functionDescription && { Description: functionDescription }),
           ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
-          Timeout: timeout,
-          PackageType: packageType,
-          Publish: publish,
-          Architectures: [architectures],
-          EphemeralStorage: { Size: ephemeralStorage },
+          ...(timeout && { Timeout: timeout }),
+          ...(packageType && { PackageType: packageType }),
+          ...(publish !== undefined && { Publish: publish }),
+          ...(architectures && { Architectures: Array.isArray(architectures) ? architectures : [architectures] }),
+          ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
           ...(revisionId && { RevisionId: revisionId }),
           ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
           ...(environment && { Environment: { Variables: parsedEnvironment } }),
@@ -159,23 +127,23 @@ async function run() {
     let currentConfig = await client.send(configCommand);
 
     const configChanged = hasConfigurationChanged(currentConfig, {
-      Role: role,
-      Handler: handler,
-      Description: functionDescription,
+      ...(role && { Role: role }),
+      ...(handler && { Handler: handler }),
+      ...(functionDescription && { Description: functionDescription }),
       ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
-      Timeout: timeout,
-      Runtime: runtime,
-      KMSKeyArn: kmsKeyArn,
-      EphemeralStorage: { Size: ephemeralStorage },
-      VpcConfig: vpcConfig ? parsedVpcConfig : undefined,
-      Environment: environment ? { Variables: parsedEnvironment } : undefined,
-      DeadLetterConfig: deadLetterConfig ? parsedDeadLetterConfig : undefined,
-      TracingConfig: tracingConfig ? parsedTracingConfig : undefined,
-      Layers: layers ? parsedLayers : undefined,
-      FileSystemConfigs: fileSystemConfigs ? parsedFileSystemConfigs : undefined,
-      ImageConfig: imageConfig ? parsedImageConfig : undefined,
-      SnapStart: snapStart ? parsedSnapStart : undefined,
-      LoggingConfig: loggingConfig ? parsedLoggingConfig : undefined
+      ...(timeout && { Timeout: timeout }),
+      ...(runtime && { Runtime: runtime }),
+      ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
+      ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
+      ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
+      ...(environment && { Environment: { Variables: parsedEnvironment } }),
+      ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
+      ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
+      ...(layers && { Layers: parsedLayers }),
+      ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
+      ...(imageConfig && { ImageConfig: parsedImageConfig }),
+      ...(snapStart && { SnapStart: parsedSnapStart }),
+      ...(loggingConfig && { LoggingConfig: parsedLoggingConfig })
     });
 
     // Update Function Configuration
@@ -186,28 +154,26 @@ async function run() {
       } 
 
       try {
-        let input = {
+        const input = {
           FunctionName: functionName,
-          Role: role,
-          Handler: handler,
-          Description: functionDescription,
-          MemorySize: parsedMemorySize,
-          Timeout: timeout,
-          Runtime: runtime,
-          KMSKeyArn: kmsKeyArn,
-          EphemeralStorage: { Size: ephemeralStorage },
-          VpcConfig: parsedVpcConfig,
-          Environment: environment ? { Variables: parsedEnvironment } : undefined,
-          DeadLetterConfig: parsedDeadLetterConfig,
-          TracingConfig: parsedTracingConfig,
-          Layers: parsedLayers,
-          FileSystemConfigs: parsedFileSystemConfigs,
-          ImageConfig: parsedImageConfig,
-          SnapStart: parsedSnapStart,
-          LoggingConfig: parsedLoggingConfig
+          ...(role && { Role: role }),
+          ...(handler && { Handler: handler }),
+          ...(functionDescription && { Description: functionDescription }),
+          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+          ...(timeout && { Timeout: timeout }),
+          ...(runtime && { Runtime: runtime }),
+          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
+          ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
+          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
+          ...(environment && { Environment: { Variables: parsedEnvironment } }),
+          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
+          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
+          ...(layers && { Layers: parsedLayers }),
+          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
+          ...(imageConfig && { ImageConfig: parsedImageConfig }),
+          ...(snapStart && { SnapStart: parsedSnapStart }),
+          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig })
         };
-        
-        input = cleanNullKeys(input);
 
         core.info(`Updating function configuration for ${functionName}`);
         const command = new UpdateFunctionConfigurationCommand(input);
@@ -257,19 +223,17 @@ async function run() {
         return;
       }
     
-      let codeInput = {
+      const codeInput = {
         FunctionName: functionName,
         ZipFile: zipFileContent,
-        Architectures: architectures ? (Array.isArray(architectures) ? architectures : [architectures]) : undefined,
-        Publish: publish,
-        RevisionId: revisionId,
-        SourceKmsKeyArn: sourceKmsKeyArn,
+        ...(architectures && { Architectures: Array.isArray(architectures) ? architectures : [architectures] }),
+        ...(publish !== undefined && { Publish: publish }),
+        ...(revisionId && { RevisionId: revisionId }),
+        ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
       };
       
       core.info(`Original buffer length: ${zipFileContent.length} bytes`);
-      
-      //codeInput = cleanNullKeys(codeInput);
-      
+            
       if (dryRun) {
         core.info(`[DRY RUN] Would update function code with parameters:`);
         core.info(JSON.stringify(codeInput, null, 2));
@@ -326,175 +290,24 @@ async function run() {
   }
 }
 
-// async function packageCodeArtifacts(artifactsDir) {
-//   const tempDir = path.join(process.cwd(), 'lambda-package');
-//   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
-
-//   try {
-//     // Clean up and recreate temp directory
-//     try {
-//       await fs.rm(tempDir, { recursive: true, force: true });
-//     } catch (error) {
-//       // Ignore errors if directory doesn't exist
-//     }
-    
-//     await fs.mkdir(tempDir, { recursive: true });
-
-//     // Resolve the artifacts directory path - handle both absolute and relative paths
-//     const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
-//       ? artifactsDir 
-//       : path.resolve(process.cwd(), artifactsDir);
-    
-//     core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
-    
-//     // Check if directory exists before trying to read it
-//     try {
-//       await fs.access(resolvedArtifactsDir);
-//     } catch (error) {
-//       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' does not exist or is not accessible: ${error.message}`);
-//     }
-    
-//     const sourceFiles = await fs.readdir(resolvedArtifactsDir);
-    
-//     if (sourceFiles.length === 0) {
-//       throw new Error(`Code artifacts directory '${resolvedArtifactsDir}' is empty, no files to package`);
-//     }
-    
-//     core.info(`Found ${sourceFiles.length} files/directories to copy`);
-    
-//     for (const file of sourceFiles) {
-//       const sourcePath = path.join(resolvedArtifactsDir, file);
-//       const destPath = path.join(tempDir, file);
-      
-//       core.info(`Copying ${sourcePath} to ${destPath}`);
-      
-//       await fs.cp(
-//         sourcePath,
-//         destPath,
-//         { recursive: true }
-//       );
-//     }
-
-//     // Use a completely different approach to create the zip file
-//     // We'll use the Node.js child_process to call system zip command
-//     // which has better compatibility with AWS Lambda
-//     const { execSync } = require('child_process');
-    
-//     try {
-//       core.info('Creating ZIP file using system zip command');
-      
-//       // First, check if zip command exists
-//       try {
-//         execSync('which zip', { stdio: 'pipe' });
-//         core.info('Zip command found, proceeding with zip creation');
-//       } catch (err) {
-//         core.info('Zip command not found, falling back to AdmZip');
-//         // Fall back to AdmZip if zip command not found
-//         const zip = new AdmZip();
-//         const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
-        
-//         for (const file of tempFiles) {
-//           const fullPath = path.join(tempDir, file.name);
-          
-//           if (file.isDirectory()) {
-//             core.info(`Adding directory: ${file.name}`);
-//             zip.addLocalFolder(fullPath, file.name);
-//           } else {
-//             core.info(`Adding file: ${file.name}`);
-//             zip.addLocalFile(fullPath);
-//           }
-//         }
-        
-//         zip.writeZip(zipPath);
-        
-//         core.info(`ZIP file created using AdmZip`);
-//         return zipPath;
-//       }
-      
-//       // Create the zip file using system zip command
-//       // Change to the tempDir first so files are at the root of the zip
-//       const zipCommand = `cd "${tempDir}" && zip -r "${zipPath}" ./*`;
-//       core.info(`Executing: ${zipCommand}`);
-      
-//       execSync(zipCommand, { stdio: 'inherit' });
-      
-//       // Verify the zip file was created
-//       const stats = await fs.stat(zipPath);
-//       core.info(`ZIP file created using system zip command: ${zipPath} (${stats.size} bytes)`);
-//     } catch (error) {
-//       core.error(`Error creating zip with system command: ${error.message}`);
-      
-//       // Fall back to simple approach with AdmZip as last resort
-//       core.info('Falling back to simple approach with AdmZip');
-//       const fallbackZip = new AdmZip();
-      
-//       // Just add all files directly with no special options
-//       const tempFiles = await fs.readdir(tempDir);
-//       for (const file of tempFiles) {
-//         const fullPath = path.join(tempDir, file);
-//         const stat = await fs.stat(fullPath);
-        
-//         if (stat.isDirectory()) {
-//           core.info(`Adding directory (simple): ${file}`);
-//           fallbackZip.addLocalFolder(fullPath, file);
-//         } else {
-//           core.info(`Adding file (simple): ${file}`);
-//           fallbackZip.addLocalFile(fullPath);
-//         }
-//       }
-      
-//       fallbackZip.writeZip(zipPath);
-//     }
-    
-//     // Verify the ZIP file is not empty
-//     try {
-//       const stats = await fs.stat(zipPath);
-//       if (stats.size === 0 || stats.size < 100) { // Basic check for very small files
-//         throw new Error(`Generated ZIP file is empty or too small (${stats.size} bytes)`);
-//       }
-      
-//       // Check ZIP content
-//       const zipCheck = new AdmZip(zipPath);
-//       const entries = zipCheck.getEntries();
-      
-//       if (entries.length === 0) {
-//         throw new Error('Generated ZIP file contains no files');
-//       }
-      
-//       core.info(`ZIP file created successfully with ${entries.length} files (${stats.size} bytes)`);
-//     } catch (error) {
-//       throw new Error(`Failed to verify the created ZIP file: ${error.message}`);
-//     }
-    
-//     return zipPath;
-//   } catch (error) {
-//     core.error(`Failed to package artifacts: ${error.message}`);
-//     throw error;
-//   }
-// }
-
 async function packageCodeArtifacts(artifactsDir) {
   const tempDir = path.join(process.cwd(), 'lambda-package');
   const zipPath = path.join(process.cwd(), 'lambda-function.zip');
   
   try {
-    // Clean up and recreate temp directory
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
     } catch (error) {
-      // Ignore errors if directory doesn't exist
     }
     
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Resolve the artifacts directory path - handle both absolute and relative paths
     const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
       ? artifactsDir 
       : path.resolve(process.cwd(), artifactsDir);
     
     core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
     
-    // Check if directory exists before trying to read it
     try {
       await fs.access(resolvedArtifactsDir);
     } catch (error) {
@@ -523,10 +336,8 @@ async function packageCodeArtifacts(artifactsDir) {
     }
 
     core.info('Creating ZIP file with careful structure');
-    // Create ZIP file with explicit options for AWS compatibility
     const zip = new AdmZip();
     
-    // Add files individually to maintain proper structure
     const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
     
     for (const file of tempFiles) {
@@ -534,25 +345,20 @@ async function packageCodeArtifacts(artifactsDir) {
       
       if (file.isDirectory()) {
         core.info(`Adding directory: ${file.name}`);
-        // Use entryName "" to place contents at root level of ZIP
         zip.addLocalFolder(fullPath, file.name);
       } else {
         core.info(`Adding file: ${file.name}`);
-        // Add to root of ZIP
         zip.addLocalFile(fullPath);
       }
     }
     
-    // Use a more compatible ZIP format with explicit options
     core.info('Writing ZIP file with standard options');
     zip.writeZip(zipPath);
     
-    // Verify the ZIP file
     try {
       const stats = await fs.stat(zipPath);
       core.info(`Generated ZIP file size: ${stats.size} bytes`);
       
-      // Verify ZIP content can be read back
       const verifyZip = new AdmZip(zipPath);
       const entries = verifyZip.getEntries();
       
@@ -587,69 +393,78 @@ async function checkFunctionExists(client, functionName) {
   }
 }
 
+function deepEqual(obj1, obj2) {
+  // Check if both arguments are objects
+  if (obj1 === null || obj2 === null || typeof obj1 !== 'object' || typeof obj2 !== 'object') {
+    return obj1 === obj2;
+  }
+  
+  // Handle arrays
+  if (Array.isArray(obj1) && Array.isArray(obj2)) {
+    if (obj1.length !== obj2.length) {
+      return false;
+    }
+    
+    // Compare each element
+    for (let i = 0; i < obj1.length; i++) {
+      if (!deepEqual(obj1[i], obj2[i])) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  // Handle objects
+  if (Array.isArray(obj1) !== Array.isArray(obj2)) {
+    return false;
+  }
+  
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  
+  if (keys1.length !== keys2.length) {
+    return false;
+  }
+  
+  // Check if all keys in obj1 exist in obj2 and have the same values
+  for (const key of keys1) {
+    if (!keys2.includes(key) || !deepEqual(obj1[key], obj2[key])) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 async function hasConfigurationChanged(currentConfig, updatedConfig) {
   if (!currentConfig || Object.keys(currentConfig).length === 0) {
     return true;
   }
-  
-  const cleanedCurrent = cleanNullKeys(currentConfig);
-  const cleanedUpdated = cleanNullKeys(updatedConfig);
-  
+
   let hasChanged = false;
   
-  for (const [key, value] of Object.entries(cleanedUpdated)) {
+  for (const [key, value] of Object.entries(updatedConfig)) {
     if (value !== undefined) {
-      // Check if this is a new parameter not in the current config
-      if (!(key in cleanedCurrent)) {
+      if (!(key in currentConfig)) {
         core.info(`Configuration difference detected in ${key}`);
         hasChanged = true;
         continue;
       }
       
       if (typeof value === 'object' && value !== null) {
-        if (!deepEqual(cleanedCurrent[key] || {}, value)) {
+        if (!deepEqual(currentConfig[key] || {}, value)) {
           core.info(`Configuration difference detected in ${key}`);
           hasChanged = true;
         }
-      } else if (cleanedCurrent[key] !== value) {
-        core.info(`Configuration difference detected in ${key}: ${cleanedCurrent[key]} -> ${value}`);
+      } else if (currentConfig[key] !== value) {
+        core.info(`Configuration difference detected in ${key}: ${currentConfig[key]} -> ${value}`);
         hasChanged = true;
       }
     }
   }
 
   return hasChanged;
-}
-
-function deepEqual(obj1, obj2) {
-  if (obj1 === obj2) return true;
-  
-  if (typeof obj1 !== 'object' || obj1 === null ||
-      typeof obj2 !== 'object' || obj2 === null) {
-    return false;
-  }
-  
-  if (Array.isArray(obj1) && Array.isArray(obj2)) {
-    if (obj1.length !== obj2.length) return false;
-    
-    if (obj1.every(item => typeof item !== 'object' || item === null) &&
-        obj2.every(item => typeof item !== 'object' || item === null)) {
-      const sorted1 = [...obj1].sort();
-      const sorted2 = [...obj2].sort();
-      return sorted1.every((val, idx) => val === sorted2[idx]);
-    }
-    
-    return obj1.every((val, idx) => deepEqual(val, obj2[idx]));
-  }
-  
-  const keys1 = Object.keys(obj1);
-  const keys2 = Object.keys(obj2);
-  
-  if (keys1.length !== keys2.length) return false;
-  
-  return keys1.every(key => 
-    keys2.includes(key) && deepEqual(obj1[key], obj2[key])
-  );
 }
 
 async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) {
@@ -686,97 +501,6 @@ async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) 
   }
 }
 
-function isEmptyValue(value) {
-  if (value === null || value === undefined || value === '') {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return true;
-    
-    for (var element of value) {
-      if (!isEmptyValue(element)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  if (typeof value === 'object') {
-    // An empty object should return true
-    if (Object.keys(value).length === 0) return true;
-    
-    for (var childValue of Object.values(value)) {
-      if (!isEmptyValue(childValue)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  return false;
-}
-
-function emptyValueReplacer(key, value) {
-  if (key === 'VpcConfig' && typeof value === 'object' && value !== null) {
-    return value;
-  }
-  
-  if (['SubnetIds', 'SecurityGroupIds'].includes(key) && Array.isArray(value)) {
-    return value; 
-  }
-  
-  if (isEmptyValue(value)) {
-    return undefined;
-  }
-
-  if (Array.isArray(value)) {
-    const filtered = value.filter(e => !isEmptyValue(e));
-    return filtered.length ? filtered : undefined;
-  }
-
-  return value;
-}
-
-function cleanNullKeys(obj) {
-  if (!obj) return obj;
-  
-  if (obj.VpcConfig && typeof obj.VpcConfig === 'object') {
-    const { VpcConfig, ...rest } = obj;
-    
-    const cleanedRest = cleanRestOfObject(rest);
-    
-    const cleanedVpcConfig = {
-      SubnetIds: Array.isArray(VpcConfig.SubnetIds) ? VpcConfig.SubnetIds : [],
-      SecurityGroupIds: Array.isArray(VpcConfig.SecurityGroupIds) ? VpcConfig.SecurityGroupIds : []
-    };
-    
-    return { ...cleanedRest, VpcConfig: cleanedVpcConfig };
-  }
-  
-  return cleanRestOfObject(obj);
-}
-
-function cleanRestOfObject(obj) {
-  if (Array.isArray(obj)) {
-    const filtered = obj.filter(item => !isEmptyValue(item));
-    return filtered.length ? filtered : [];
-  }
-  
-  const stringified = JSON.stringify(obj, emptyValueReplacer);
-  
-  if (stringified === undefined || stringified === 'undefined' || stringified === 'null') {
-    return {};
-  }
-  
-  try {
-    return JSON.parse(stringified);
-  } catch (error) {
-    core.debug(`Error parsing cleaned object: ${error.message}`);
-    return {};
-  }
-}
-
 if (require.main === module) {
   run();
 }
@@ -786,8 +510,5 @@ module.exports = {
   packageCodeArtifacts,
   checkFunctionExists,
   hasConfigurationChanged,
-  waitForFunctionUpdated,
-  isEmptyValue,
-  emptyValueReplacer,
-  cleanNullKeys
+  waitForFunctionUpdated
 };
