@@ -39,10 +39,6 @@ function validateRequiredInputs() {
   }
 
   const region = core.getInput('region', { required: true });
-  if (!region) {
-    core.setFailed('Region must be provided');
-    return { valid: false };
-  }
 
   const codeArtifactsDir = core.getInput('code-artifacts-dir');
   if (!codeArtifactsDir) {
@@ -209,12 +205,11 @@ function getAdditionalInputs() {
   const packageType = 'Zip';
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
   
-  // Fix publish flag to properly handle boolean input
   let publish;
   try {
     publish = core.getBooleanInput('publish', { required: false });
   } catch (error) {
-    publish = true; // Default to true only if not explicitly set
+    publish = true; 
   }
   
   const revisionId = core.getInput('revision-id', { required: false });

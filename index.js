@@ -4,7 +4,6 @@ const fs = require('fs/promises');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const validations = require('./validations');
-const { toBase64 } = require('@smithy/util-base64');
 
 async function run() {
   try {  
@@ -58,9 +57,7 @@ async function run() {
       try {
         const zipFileContent = await fs.readFile(finalZipPath);
         
-        core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`);
-        core.info(`Type: ${typeof zipFileContent}, isBuffer: ${Buffer.isBuffer(zipFileContent)}, isUint8Array: ${zipFileContent instanceof Uint8Array}`);
- 
+        core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`); 
         core.info('Creating Lambda function with deployment package');
 
         const input = {
@@ -302,9 +299,7 @@ async function packageCodeArtifacts(artifactsDir) {
     
     await fs.mkdir(tempDir, { recursive: true });
 
-    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) 
-      ? artifactsDir 
-      : path.resolve(process.cwd(), artifactsDir);
+    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) ? artifactsDir : path.resolve(process.cwd(), artifactsDir);
     
     core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
     
@@ -335,7 +330,7 @@ async function packageCodeArtifacts(artifactsDir) {
       );
     }
 
-    core.info('Creating ZIP file with careful structure');
+    core.info('Creating ZIP file with standard options');
     const zip = new AdmZip();
     
     const tempFiles = await fs.readdir(tempDir, { withFileTypes: true });
@@ -393,19 +388,80 @@ async function checkFunctionExists(client, functionName) {
   }
 }
 
+function isEmptyValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length === 0 || value.every(item => isEmptyValue(item));
+  }
+
+  if (typeof value === 'object') {
+    if ('SubnetIds' in value || 'SecurityGroupIds' in value) {
+      return false;
+    }
+    return Object.keys(value).length === 0 || 
+           Object.values(value).every(val => isEmptyValue(val));
+  }
+
+  return false; 
+}
+
+function cleanNullKeys(obj) {
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+
+  if (obj === '') {
+    return undefined;
+  }
+
+  const isVpcConfig = obj && typeof obj === 'object' && ('SubnetIds' in obj || 'SecurityGroupIds' in obj);
+  
+  if (Array.isArray(obj)) {
+    const filtered = obj.filter(item => !isEmptyValue(item));
+    return filtered.length > 0 ? filtered : undefined;
+  }
+
+  if (typeof obj === 'object') {
+    const result = {};
+    let hasProperties = false;
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (isVpcConfig && (key === 'SubnetIds' || key === 'SecurityGroupIds')) {
+        result[key] = Array.isArray(value) ? value : [];
+        hasProperties = true;
+        continue;
+      }
+
+      if (value === null || value === undefined || value === '') {
+        continue; 
+      }
+
+      const cleaned = cleanNullKeys(value);
+      if (cleaned !== undefined) {
+        result[key] = cleaned;
+        hasProperties = true;
+      }
+    }
+
+    return hasProperties ? result : undefined;
+  }
+
+  return obj; 
+}
+
 function deepEqual(obj1, obj2) {
-  // Check if both arguments are objects
   if (obj1 === null || obj2 === null || typeof obj1 !== 'object' || typeof obj2 !== 'object') {
     return obj1 === obj2;
   }
   
-  // Handle arrays
   if (Array.isArray(obj1) && Array.isArray(obj2)) {
     if (obj1.length !== obj2.length) {
       return false;
     }
     
-    // Compare each element
     for (let i = 0; i < obj1.length; i++) {
       if (!deepEqual(obj1[i], obj2[i])) {
         return false;
@@ -415,7 +471,6 @@ function deepEqual(obj1, obj2) {
     return true;
   }
   
-  // Handle objects
   if (Array.isArray(obj1) !== Array.isArray(obj2)) {
     return false;
   }
@@ -427,7 +482,6 @@ function deepEqual(obj1, obj2) {
     return false;
   }
   
-  // Check if all keys in obj1 exist in obj2 and have the same values
   for (const key of keys1) {
     if (!keys2.includes(key) || !deepEqual(obj1[key], obj2[key])) {
       return false;
@@ -442,9 +496,10 @@ async function hasConfigurationChanged(currentConfig, updatedConfig) {
     return true;
   }
 
+  const cleanedUpdated = cleanNullKeys(updatedConfig) || {};
   let hasChanged = false;
   
-  for (const [key, value] of Object.entries(updatedConfig)) {
+  for (const [key, value] of Object.entries(cleanedUpdated)) {
     if (value !== undefined) {
       if (!(key in currentConfig)) {
         core.info(`Configuration difference detected in ${key}`);
@@ -510,5 +565,8 @@ module.exports = {
   packageCodeArtifacts,
   checkFunctionExists,
   hasConfigurationChanged,
-  waitForFunctionUpdated
+  waitForFunctionUpdated,
+  isEmptyValue,
+  cleanNullKeys,
+  deepEqual
 };

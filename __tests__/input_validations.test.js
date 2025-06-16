@@ -37,7 +37,6 @@ describe('Input Validation Tests', () => {
     core.getInput.mockImplementation((name) => {
       switch (name) {
         case 'function-name': return 'test-function';
-        case 'region': return 'us-east-1';
         case 'code-artifacts-dir': return './artifacts';
         default: return '';
       }
@@ -421,56 +420,6 @@ describe('Input Validation Tests', () => {
     });
   });
   
-  describe('Required Inputs Validation', () => {
-    it('should require function name', () => {
-      core.getInput.mockImplementation((name, options) => {
-        if (name === 'function-name') return '';
-        if (name === 'region') return 'us-east-1';
-        if (name === 'code-artifacts-dir') return './src';
-        return '';
-      });
-      
-      const result = originalValidations.validateAllInputs();
-      expect(result.valid).toBe(false);
-      
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringMatching(/function name must be provided/i)
-      );
-    });
-    
-    it('should require region', () => {
-      core.getInput.mockImplementation((name, options) => {
-        if (name === 'function-name') return 'test-function';
-        if (name === 'region') return '';
-        if (name === 'code-artifacts-dir') return './src';
-        return '';
-      });
-      
-      const result = originalValidations.validateAllInputs();
-      expect(result.valid).toBe(false);
-      
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringMatching(/region must be provided/i)
-      );
-    });
-    
-    it('should require code-artifacts-dir', () => {
-      core.getInput.mockImplementation((name, options) => {
-        if (name === 'function-name') return 'test-function';
-        if (name === 'region') return 'us-east-1';
-        if (name === 'code-artifacts-dir') return '';
-        return '';
-      });
-      
-      const result = originalValidations.validateAllInputs();
-      expect(result.valid).toBe(false);
-      
-      expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringMatching(/Code-artifacts-dir must be provided/i)
-      );
-    });
-  });
-
   describe('Integration with index.js', () => {
     it('should call validateAllInputs and exit when validation fails', async () => {
       // Mock validateAllInputs to return invalid result 

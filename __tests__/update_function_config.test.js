@@ -10,9 +10,19 @@ jest.mock('fs/promises', () => ({
   })),
   copyFile: jest.fn().mockResolvedValue(undefined),
   readFile: jest.fn().mockResolvedValue(Buffer.from('mock file content')),
-  readdir: jest.fn().mockResolvedValue(['file1.js', 'directory']),
+  readdir: jest.fn().mockImplementation((dir, options) => {
+    if (options && options.withFileTypes) {
+      return Promise.resolve([
+        { name: 'file1.js', isDirectory: () => false },
+        { name: 'directory', isDirectory: () => true }
+      ]);
+    } else {
+      return Promise.resolve(['file1.js', 'directory']);
+    }
+  }),
   cp: jest.fn().mockResolvedValue(undefined),
-  rm: jest.fn().mockResolvedValue(undefined)
+  rm: jest.fn().mockResolvedValue(undefined),
+  access: jest.fn().mockResolvedValue(undefined) // Add mock for access function
 }));
 
 // Mock glob and AdmZip
@@ -21,12 +31,34 @@ jest.mock('glob', () => ({
   glob: mockGlob
 }));
 
-jest.mock('adm-zip', () => 
-  jest.fn().mockImplementation(() => ({
-    addLocalFolder: jest.fn(),
-    writeZip: jest.fn()
-  }))
-);
+jest.mock('adm-zip', () => {
+  // Create mock entries for zip verification
+  const mockEntries = [
+    {
+      entryName: 'file1.js',
+      header: { size: 1024 }
+    },
+    {
+      entryName: 'directory/subfile.js',
+      header: { size: 2048 }
+    }
+  ];
+  
+  return jest.fn().mockImplementation((zipPath) => {
+    if (zipPath) {
+      // This is for verification when AdmZip is called with a path
+      return {
+        getEntries: jest.fn().mockReturnValue(mockEntries)
+      };
+    }
+    // This is for the initial AdmZip() call to create zip
+    return {
+      addLocalFolder: jest.fn(),
+      addLocalFile: jest.fn(),
+      writeZip: jest.fn()
+    };
+  });
+});
 
 jest.mock('path');
 
@@ -211,6 +243,10 @@ describe('Lambda Update Unit Tests', () => {
   test('should package artifacts correctly', async () => {
     // Setup
     const artifactsDir = '/mock/artifacts';
+    
+    // Mock path.resolve for this test
+    path.resolve = jest.fn().mockReturnValue('/mock/artifacts');
+    path.isAbsolute = jest.fn().mockReturnValue(true);
     
     // Act
     const result = await mainModule.packageCodeArtifacts(artifactsDir);

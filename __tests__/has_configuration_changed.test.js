@@ -1,5 +1,5 @@
-const { hasConfigurationChanged, cleanNullKeys, isEmptyValue } = require('../index');
 const core = require('@actions/core');
+const { isEmptyValue, cleanNullKeys, hasConfigurationChanged, deepEqual } = require('../index');
 
 // Mock dependencies
 jest.mock('@actions/core');
@@ -339,7 +339,7 @@ describe('hasConfigurationChanged function', () => {
       Layers: [] // Empty array
     };
     
-    // With the new implementation, empty arrays should be removed by cleanNullKeys
+    // Empty arrays should be removed by cleanNullKeys
     // so this shouldn't trigger a change detection (empty array considered same as not provided)
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(false);

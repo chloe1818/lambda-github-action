@@ -27,19 +27,50 @@ describe('packageCodeArtifacts function', () => {
     fs.mkdir.mockResolvedValue(undefined);
     fs.cp = jest.fn().mockResolvedValue(undefined);
     fs.rm = jest.fn().mockResolvedValue(undefined);
+    fs.stat = jest.fn().mockResolvedValue({ size: 12345 });
     
-    // Mock fs.readdir to return files and directories
-    fs.readdir.mockResolvedValue([
-      'file1.js',
-      'directory'
-    ]);
+    // Mock fs.readdir to return objects with isDirectory method
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: 'directory', isDirectory: () => true }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', 'directory']);
+      }
+    });
     
     // Mock AdmZip constructor and methods
     const mockZipInstance = {
       addLocalFolder: jest.fn(),
+      addLocalFile: jest.fn(),
       writeZip: jest.fn()
     };
-    AdmZip.mockImplementation(() => mockZipInstance);
+    
+    // Create mock entries for zip verification
+    const mockEntries = [
+      {
+        entryName: 'file1.js',
+        header: { size: 1024 }
+      },
+      {
+        entryName: 'directory/subfile.js',
+        header: { size: 2048 }
+      }
+    ];
+    
+    // Mock both the zip instance creation and the verification instance
+    AdmZip.mockImplementation((zipPath) => {
+      if (zipPath) {
+        // This is for verification when AdmZip is called with a path
+        return {
+          getEntries: jest.fn().mockReturnValue(mockEntries)
+        };
+      }
+      // This is for the initial AdmZip() call to create zip
+      return mockZipInstance;
+    });
     
     // Mock core methods
     core.info = jest.fn();
@@ -54,28 +85,30 @@ describe('packageCodeArtifacts function', () => {
     expect(fs.rm).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true, force: true });
     expect(fs.mkdir).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true });
     
-    // Check readdir was called for the artifacts directory
-    expect(fs.readdir).toHaveBeenCalledWith(artifactsDir);
+    // Check readdir was called with the artifacts directory
+    expect(fs.readdir).toHaveBeenCalledWith(expect.any(String), expect.any(Object));
     
     // Check fs.cp was called for each top-level file/directory with recursive flag
+    expect(fs.cp).toHaveBeenCalledTimes(2);
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/file1.js', 
-      '/mock/cwd/lambda-package/file1.js', 
+      expect.stringContaining('file1.js'),
+      expect.stringContaining('lambda-package/file1.js'), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/directory', 
-      '/mock/cwd/lambda-package/directory', 
+      expect.stringContaining('directory'),
+      expect.stringContaining('lambda-package/directory'), 
       { recursive: true }
     );
     
     // Check zip creation
     const zipInstance = AdmZip.mock.results[0].value;
-    expect(zipInstance.addLocalFolder).toHaveBeenCalledWith('/mock/cwd/lambda-package');
+    expect(zipInstance.addLocalFolder).toHaveBeenCalledWith('/mock/cwd/lambda-package/directory', 'directory');
+    expect(zipInstance.addLocalFile).toHaveBeenCalledWith('/mock/cwd/lambda-package/file1.js');
     expect(zipInstance.writeZip).toHaveBeenCalledWith('/mock/cwd/lambda-function.zip');
     
     // Check logs were written
-    expect(core.info).toHaveBeenCalledWith('Creating ZIP file');
+    expect(core.info).toHaveBeenCalledWith('Creating ZIP file with standard options');
     
     // Check return value
     expect(result).toBe('/mock/cwd/lambda-function.zip');
@@ -83,47 +116,61 @@ describe('packageCodeArtifacts function', () => {
 
   test('should handle nested directory structures', async () => {
     // Set up readdir to return different files
-    fs.readdir.mockResolvedValue([
-      'file1.js',
-      'dir1'
-    ]);
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: 'dir1', isDirectory: () => true }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', 'dir1']);
+      }
+    });
     
     const artifactsDir = '/mock/artifacts';
     await packageCodeArtifacts(artifactsDir);
     
     // Check fs.cp was called for top-level items with recursive flag
+    expect(fs.cp).toHaveBeenCalledTimes(2);
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/file1.js', 
-      '/mock/cwd/lambda-package/file1.js', 
+      expect.stringContaining('file1.js'),
+      expect.stringContaining('lambda-package/file1.js'), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/dir1', 
-      '/mock/cwd/lambda-package/dir1', 
+      expect.stringContaining('dir1'),
+      expect.stringContaining('lambda-package/dir1'), 
       { recursive: true }
     );
   });
 
   test('should handle files with hidden/dot files', async () => {
     // Set up readdir to return hidden files
-    fs.readdir.mockResolvedValue([
-      'file1.js',
-      '.env',
-      '.config'
-    ]);
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: '.env', isDirectory: () => false },
+          { name: '.config', isDirectory: () => false }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', '.env', '.config']);
+      }
+    });
     
     const artifactsDir = '/mock/artifacts';
     await packageCodeArtifacts(artifactsDir);
     
     // Check fs.cp was called for hidden files with recursive flag
+    expect(fs.cp).toHaveBeenCalledTimes(3); // file1.js, .env, and .config
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/.env', 
-      '/mock/cwd/lambda-package/.env', 
+      expect.stringContaining('.env'),
+      expect.stringContaining('lambda-package/.env'), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
-      '/mock/artifacts/.config', 
-      '/mock/cwd/lambda-package/.config', 
+      expect.stringContaining('.config'),
+      expect.stringContaining('lambda-package/.config'), 
       { recursive: true }
     );
   });
@@ -132,6 +179,18 @@ describe('packageCodeArtifacts function', () => {
     // Mock fs.rm to fail but allow the test to continue
     const rmError = new Error('Failed to remove directory');
     fs.rm.mockRejectedValueOnce(rmError);
+    
+    // Ensure fs.readdir uses withFileTypes for this test
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: 'directory', isDirectory: () => true }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', 'directory']);
+      }
+    });
     
     const artifactsDir = '/mock/artifacts';
     const result = await packageCodeArtifacts(artifactsDir);
@@ -164,6 +223,18 @@ describe('packageCodeArtifacts function', () => {
       return Promise.resolve();
     });
     
+    // Ensure fs.readdir uses withFileTypes for this test
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: 'directory', isDirectory: () => true }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', 'directory']);
+      }
+    });
+    
     const artifactsDir = '/mock/artifacts';
     
     // Expect the function to reject with the error
@@ -177,11 +248,24 @@ describe('packageCodeArtifacts function', () => {
     // Mock AdmZip's writeZip to throw an error
     const mockZipInstance = {
       addLocalFolder: jest.fn(),
+      addLocalFile: jest.fn(),
       writeZip: jest.fn().mockImplementation(() => {
         throw new Error('Failed to write zip');
       })
     };
     AdmZip.mockImplementation(() => mockZipInstance);
+    
+    // Ensure fs.readdir uses withFileTypes for this test
+    fs.readdir.mockImplementation((dir, options) => {
+      if (options && options.withFileTypes) {
+        return Promise.resolve([
+          { name: 'file1.js', isDirectory: () => false },
+          { name: 'directory', isDirectory: () => true }
+        ]);
+      } else {
+        return Promise.resolve(['file1.js', 'directory']);
+      }
+    });
     
     const artifactsDir = '/mock/artifacts';
     

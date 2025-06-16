@@ -6,7 +6,7 @@ inputs:
     required: true
   region:
     description: 'AWS region'
-    required: true
+    required: false
   code-artifacts-dir:
     description: 'The path to a directory of code artifacts to zip and deploy to Lambda.'
     required: true
