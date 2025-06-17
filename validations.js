@@ -216,6 +216,15 @@ function getAdditionalInputs() {
   const runtime = core.getInput('runtime', { required: false }) || 'nodejs20.x';
   const handler = core.getInput('handler', { required: false });
   const architectures = core.getInput('architectures', { required: false }) || 'x86_64';
+  const s3Bucket = core.getInput('s3-bucket', { required: false });
+  let s3Key = core.getInput('s3-key', { required: false });
+  let createS3Bucket;
+  
+  try {
+    createS3Bucket = core.getBooleanInput('create-s3-bucket', { required: false });
+  } catch (error) {
+    createS3Bucket = true; 
+  }
 
   return {
     functionDescription,
@@ -225,7 +234,10 @@ function getAdditionalInputs() {
     revisionId,
     runtime,
     handler,
-    architectures
+    architectures,
+    s3Bucket,
+    s3Key,
+    createS3Bucket
   };
 }
 
