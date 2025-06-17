@@ -30,6 +30,11 @@ async function run() {
       core.info('DRY RUN MODE: No AWS resources will be created or modified');
     }
     
+    const enhancedEnvironment = { 
+      ...parsedEnvironment,
+      'AWS_LAMBDA_GITHUB_ACTION_SOURCE': 'aws-actions/amazon-lambda-deploy'
+    };
+    
     core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
     let finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
 
@@ -77,7 +82,7 @@ async function run() {
           ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
           ...(revisionId && { RevisionId: revisionId }),
           ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          ...(environment && { Environment: { Variables: parsedEnvironment } }),
+          Environment: { Variables: enhancedEnvironment },
           ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
           ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
           ...(layers && { Layers: parsedLayers }),
@@ -133,7 +138,7 @@ async function run() {
       ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
       ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
       ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-      ...(environment && { Environment: { Variables: parsedEnvironment } }),
+      Environment: { Variables: enhancedEnvironment },
       ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
       ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
       ...(layers && { Layers: parsedLayers }),
@@ -162,7 +167,7 @@ async function run() {
           ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
           ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
           ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          ...(environment && { Environment: { Variables: parsedEnvironment } }),
+          Environment: { Variables: enhancedEnvironment },
           ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
           ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
           ...(layers && { Layers: parsedLayers }),
