@@ -651,8 +651,7 @@ async function checkBucketExists(s3Client, bucketName) {
       core.info(`S3 bucket ${bucketName} does not exist`);
       return false;
     }
-    
-    // Enhanced error logging
+
     core.error(`Error checking if bucket exists: ${error.$metadata?.httpStatusCode || error.name} - ${error.message}`);
     core.error(`Error details: ${JSON.stringify({
       code: error.code,
@@ -663,22 +662,11 @@ async function checkBucketExists(s3Client, bucketName) {
     })}`);
     
     if (error.$metadata?.httpStatusCode === 301) {
-      core.error(`
-REGION MISMATCH ERROR: The bucket "${bucketName}" exists but in a different region than specified (${s3Client.config.region}).
-S3 buckets are global but region-specific. When you get a 301 redirect, it means:
-1. The bucket exists but is in a different region than your request
-2. You need to use the correct region in your configuration
-
-Solutions:
-- Update your region setting to match the bucket's actual region
-- Create a new bucket in the current region (${s3Client.config.region})
-- Or use a different bucket name that doesn't conflict globally
-      `);
+      core.error(`REGION MISMATCH ERROR: The bucket "${bucketName}" exists but in a different region than specified (${s3Client.config.region}). S3 buckets are global but region-specific. `);
       throw new Error(`Bucket "${bucketName}" exists in a different region than ${s3Client.config.region}`);
     } else if (error.name === 'AccessDenied' || error.$metadata?.httpStatusCode === 403) {
-      core.error('Access denied. Ensure your AWS credentials have s3:HeadBucket permission.');
+      core.error('Access denied.');
     }
-    
     throw error;
   }
 }
@@ -687,7 +675,6 @@ async function createBucket(s3Client, bucketName, region) {
   core.info(`Creating S3 bucket: ${bucketName}`);
   
   try {
-    // Validate bucket name according to S3 naming rules
     if (!validateBucketName(bucketName)) {
       throw new Error(`Invalid bucket name: "${bucketName}". Bucket names must be 3-63 characters, lowercase, start/end with a letter/number, and contain only letters, numbers, dots, and hyphens.`);
     }
@@ -711,7 +698,6 @@ async function createBucket(s3Client, bucketName, region) {
       
       return true;
     } catch (sendError) {
-      // Enhanced error reporting
       core.error(`Error creating bucket: ${sendError.name} - ${sendError.message}`);
       core.error(`Error details: ${JSON.stringify({
         code: sendError.code,
@@ -738,124 +724,28 @@ async function createBucket(s3Client, bucketName, region) {
   }
 }
 
-// Helper function to validate S3 bucket name according to AWS rules
 function validateBucketName(name) {
-  // Bucket naming rules: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
   if (!name || typeof name !== 'string') return false;
   
-  // Length between 3 and 63 characters
   if (name.length < 3 || name.length > 63) return false;
   
-  // Must consist only of lowercase letters, numbers, dots (.), and hyphens (-)
   if (!/^[a-z0-9.-]+$/.test(name)) return false;
   
-  // Must begin and end with a letter or number
   if (!/^[a-z0-9].*[a-z0-9]$/.test(name)) return false;
   
-  // Must not be formatted as an IP address (e.g., 192.168.5.4)
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(name)) return false;
   
-  // Cannot have consecutive periods
   if (/\.\./.test(name)) return false;
   
-  // Cannot begin with the prefix "xn--"
   if (/^xn--/.test(name)) return false;
   
-  // Cannot begin with the prefix "sthree-"
   if (/^sthree-/.test(name)) return false;
   
-  // Cannot begin with the prefix "sthree-configurator"
   if (/^sthree-configurator/.test(name)) return false;
   
-  // Cannot begin with the prefix "amzn-s3-demo-bucket"
   if (/^amzn-s3-demo-bucket/.test(name)) return false;
   
   return true;
-}
-
-// Helper function to check S3 permissions and bucket access
-async function checkS3Access(s3Client, bucketName, region) {
-  core.info('Performing S3 access validation checks...');
-  
-  // 1. Check if AWS credentials are valid
-  try {
-    core.info('Verifying AWS credentials...');
-    try {
-      // This will intentionally fail, but with a 403 if credentials are valid
-      const randomBucketName = 'aws-creds-test-' + Math.floor(Math.random() * 1000000);
-      await s3Client.send(new HeadBucketCommand({ Bucket: randomBucketName }));
-    } catch (authError) {
-      if (authError.$metadata?.httpStatusCode === 403) {
-        core.info('✓ AWS credentials are valid (got expected 403 response)');
-      } else if (authError.name === 'CredentialsProviderError' || authError.name === 'InvalidAccessKeyId') {
-        throw new Error(`Invalid AWS credentials: ${authError.message}`);
-      } else {
-        core.info(`Got unexpected error checking credentials: ${authError.name} - ${authError.message}`);
-      }
-    }
-    
-    // 2. Check permission to call HeadBucket on target bucket
-    core.info(`Checking HeadBucket permission on bucket: ${bucketName}`);
-    try {
-      await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
-      core.info(`✓ Successfully verified HeadBucket permission on ${bucketName}`);
-      return true;
-    } catch (headError) {
-      if (headError.$metadata?.httpStatusCode === 404) {
-        core.info(`Bucket ${bucketName} does not exist - will attempt to create it`);
-        
-        // 3. Check permission to call CreateBucket
-        try {
-          core.info('Checking CreateBucket permission...');
-          // Simple validation without actually creating the bucket
-          if (!validateBucketName(bucketName)) {
-            core.warning(`Bucket name "${bucketName}" doesn't follow S3 naming rules - this will cause creation to fail`);
-          }
-          
-          // Check region setting for bucket creation
-          if (region !== 'us-east-1') {
-            core.info(`Will use LocationConstraint=${region} when creating bucket`);
-          } else {
-            core.info('Using default us-east-1 region (no LocationConstraint needed)');
-          }
-          
-          return false;
-        } catch (error) {
-          throw new Error(`Error checking bucket creation permissions: ${error.message}`);
-        }
-      } else if (headError.$metadata?.httpStatusCode === 301) {
-        const message = `
-REGION MISMATCH ERROR: Bucket "${bucketName}" exists but in a different region than ${region}.
-
-When you get a 301 redirect with S3, it means the bucket exists but in a different AWS region.
-S3 buckets are global resources (the name must be unique across all of AWS), but they're 
-created in a specific region.
-
-To fix this issue, try one of the following:
-1. Find out which region the bucket is in and update your region setting
-2. Create a new bucket with a different name in region ${region}
-3. If this is your bucket, consider using AWS CLI to find its region:
-   aws s3api get-bucket-location --bucket ${bucketName}
-`;
-        core.error(message);
-        throw new Error(`Bucket "${bucketName}" exists but in a different region (got 301 redirect)`);
-      } else if (headError.$metadata?.httpStatusCode === 403) {
-        throw new Error(`Access denied - ensure your IAM policy has s3:HeadBucket permission for bucket: ${bucketName}`);
-      } else {
-        core.error(`Error checking bucket exists: ${headError.name || headError.$metadata?.httpStatusCode} - ${headError.message}`);
-        core.error(`Error details: ${JSON.stringify({
-          code: headError.code,
-          name: headError.name,
-          message: headError.message,
-          statusCode: headError.$metadata?.httpStatusCode
-        })}`);
-        throw new Error(`Failed to check if bucket exists: ${headError.$metadata?.httpStatusCode || headError.name} - ${headError.message}`);
-      }
-    }
-  } catch (error) {
-    core.error(`S3 access validation failed: ${error.message}`);
-    throw error;
-  }
 }
 
 async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
@@ -863,49 +753,10 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   
   try {
     const s3Client = new S3Client({ region });
-    
-    // Perform comprehensive S3 access validation checks
-    try {
-      await checkS3Access(s3Client, bucketName, region);
-    } catch (accessError) {
-      core.error(`S3 access validation failed: ${accessError.message}`);
-      core.error(`
-Please ensure your IAM policy includes these permissions:
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:PutObject",
-                "s3:GetObject",
-                "s3:ListBucket",
-                "s3:GetBucketLocation",
-                "s3:HeadBucket"
-            ],
-            "Resource": [
-                "arn:aws:s3:::${bucketName}",
-                "arn:aws:s3:::${bucketName}/*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:CreateBucket"
-            ],
-            "Resource": "arn:aws:s3:::${bucketName}"
-        }
-    ]
-}`);
-      throw accessError;
-    }
-
-    // Check if bucket exists
     let bucketExists = false;
     try {
       bucketExists = await checkBucketExists(s3Client, bucketName);
     } catch (checkError) {
-      // Enhanced error reporting for bucket check
       core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
       core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
       
@@ -938,8 +789,7 @@ Please ensure your IAM policy includes these permissions:
         throw bucketError;
       }
     }
-    
-    // Verify the file exists and is readable
+
     try {
       await fs.access(zipFilePath);
       core.info(`Deployment package verified at ${zipFilePath}`);
@@ -950,7 +800,6 @@ Please ensure your IAM policy includes these permissions:
     const fileContent = await fs.readFile(zipFilePath);
     core.info(`Read deployment package, size: ${fileContent.length} bytes`);
     
-    // Attempt upload
     try {
       const input = {
         Bucket: bucketName,
@@ -1006,7 +855,6 @@ Please ensure your IAM policy includes these permissions:
     throw error;
   }
 }
-
 
 if (require.main === module) {
   run();
