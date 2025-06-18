@@ -873,6 +873,5 @@ module.exports = {
   uploadToS3,
   checkBucketExists,
   createBucket,
-  checkS3Access,
   validateBucketName
 };
