@@ -1,6 +1,6 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
-const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketPolicyCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -651,7 +651,21 @@ async function checkBucketExists(s3Client, bucketName) {
       core.info(`S3 bucket ${bucketName} does not exist`);
       return false;
     }
-    core.error(`Error checking if bucket exists: ${error.message}`);
+    
+    // Enhanced error logging
+    core.error(`Error checking if bucket exists: ${error.name} - ${error.message}`);
+    core.error(`Error details: ${JSON.stringify({
+      code: error.code,
+      name: error.name,
+      message: error.message,
+      statusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId
+    })}`);
+    
+    if (error.name === 'AccessDenied' || error.$metadata?.httpStatusCode === 403) {
+      core.error('Access denied. Ensure your AWS credentials have s3:HeadBucket permission.');
+    }
+    
     throw error;
   }
 }
@@ -660,6 +674,11 @@ async function createBucket(s3Client, bucketName, region) {
   core.info(`Creating S3 bucket: ${bucketName}`);
   
   try {
+    // Validate bucket name according to S3 naming rules
+    if (!validateBucketName(bucketName)) {
+      throw new Error(`Invalid bucket name: "${bucketName}". Bucket names must be 3-63 characters, lowercase, start/end with a letter/number, and contain only letters, numbers, dots, and hyphens.`);
+    }
+    
     const input = {
       Bucket: bucketName,
       ...(region !== 'us-east-1' && { 
@@ -669,13 +688,143 @@ async function createBucket(s3Client, bucketName, region) {
       })
     };
     
+    core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region}`);
     const command = new CreateBucketCommand(input);
-    await s3Client.send(command);
-    core.info(`Successfully created S3 bucket: ${bucketName}`);
     
-    return true;
+    try {
+      const response = await s3Client.send(command);
+      core.info(`Successfully created S3 bucket: ${bucketName}`);
+      core.info(`Bucket location: ${response.Location}`);
+      
+      return true;
+    } catch (sendError) {
+      // Enhanced error reporting
+      core.error(`Error creating bucket: ${sendError.name} - ${sendError.message}`);
+      core.error(`Error details: ${JSON.stringify({
+        code: sendError.code,
+        name: sendError.name,
+        message: sendError.message,
+        statusCode: sendError.$metadata?.httpStatusCode,
+        requestId: sendError.$metadata?.requestId
+      })}`);
+      
+      if (sendError.name === 'BucketAlreadyExists' || sendError.name === 'BucketAlreadyOwnedByYou') {
+        core.warning(`Bucket name ${bucketName} is already taken but may be owned by another account.`);
+        throw sendError;
+      } else if (sendError.$metadata?.httpStatusCode === 403) {
+        core.error('Access denied when creating bucket. Check your IAM permissions for s3:CreateBucket.');
+        throw new Error(`Access denied when creating bucket ${bucketName}. Ensure your IAM policy includes s3:CreateBucket permission.`);
+      } else if (sendError.name === 'InvalidBucketName') {
+        core.error(`The bucket name "${bucketName}" is invalid. See s3-troubleshooting.md for S3 bucket naming rules.`);
+      }
+      throw sendError;
+    }
   } catch (error) {
-    core.error(`Failed to create S3 bucket: ${error.message}`);
+    core.error(`Failed to create S3 bucket: ${error.name} - ${error.message}`);
+    throw error;
+  }
+}
+
+// Helper function to validate S3 bucket name according to AWS rules
+function validateBucketName(name) {
+  // Bucket naming rules: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
+  if (!name || typeof name !== 'string') return false;
+  
+  // Length between 3 and 63 characters
+  if (name.length < 3 || name.length > 63) return false;
+  
+  // Must consist only of lowercase letters, numbers, dots (.), and hyphens (-)
+  if (!/^[a-z0-9.-]+$/.test(name)) return false;
+  
+  // Must begin and end with a letter or number
+  if (!/^[a-z0-9].*[a-z0-9]$/.test(name)) return false;
+  
+  // Must not be formatted as an IP address (e.g., 192.168.5.4)
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(name)) return false;
+  
+  // Cannot have consecutive periods
+  if (/\.\./.test(name)) return false;
+  
+  // Cannot begin with the prefix "xn--"
+  if (/^xn--/.test(name)) return false;
+  
+  // Cannot begin with the prefix "sthree-"
+  if (/^sthree-/.test(name)) return false;
+  
+  // Cannot begin with the prefix "sthree-configurator"
+  if (/^sthree-configurator/.test(name)) return false;
+  
+  // Cannot begin with the prefix "amzn-s3-demo-bucket"
+  if (/^amzn-s3-demo-bucket/.test(name)) return false;
+  
+  return true;
+}
+
+// Helper function to check S3 permissions and bucket access
+async function checkS3Access(s3Client, bucketName, region) {
+  core.info('Performing S3 access validation checks...');
+  
+  // 1. Check if AWS credentials are valid
+  try {
+    core.info('Verifying AWS credentials...');
+    try {
+      // This will intentionally fail, but with a 403 if credentials are valid
+      const randomBucketName = 'aws-creds-test-' + Math.floor(Math.random() * 1000000);
+      await s3Client.send(new HeadBucketCommand({ Bucket: randomBucketName }));
+    } catch (authError) {
+      if (authError.$metadata?.httpStatusCode === 403) {
+        core.info('✓ AWS credentials are valid (got expected 403 response)');
+      } else if (authError.name === 'CredentialsProviderError' || authError.name === 'InvalidAccessKeyId') {
+        throw new Error(`Invalid AWS credentials: ${authError.message}`);
+      } else {
+        core.info(`Got unexpected error checking credentials: ${authError.name} - ${authError.message}`);
+      }
+    }
+    
+    // 2. Check permission to call HeadBucket on target bucket
+    core.info(`Checking HeadBucket permission on bucket: ${bucketName}`);
+    try {
+      await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+      core.info(`✓ Successfully verified HeadBucket permission on ${bucketName}`);
+      return true;
+    } catch (headError) {
+      if (headError.$metadata?.httpStatusCode === 404) {
+        core.info(`Bucket ${bucketName} does not exist - will attempt to create it`);
+        
+        // 3. Check permission to call CreateBucket
+        try {
+          core.info('Checking CreateBucket permission...');
+          // Simple validation without actually creating the bucket
+          if (!validateBucketName(bucketName)) {
+            core.warning(`Bucket name "${bucketName}" doesn't follow S3 naming rules - this will cause creation to fail`);
+          }
+          
+          // Check region setting for bucket creation
+          if (region !== 'us-east-1') {
+            core.info(`Will use LocationConstraint=${region} when creating bucket`);
+          } else {
+            core.info('Using default us-east-1 region (no LocationConstraint needed)');
+          }
+          
+          return false;
+        } catch (error) {
+          throw new Error(`Error checking bucket creation permissions: ${error.message}`);
+        }
+      } else if (headError.$metadata?.httpStatusCode === 403) {
+        throw new Error(`Access denied - ensure your IAM policy has s3:HeadBucket permission for bucket: ${bucketName}`);
+      } else {
+        core.error(`Error checking bucket exists: ${headError.name} - ${headError.message}`);
+        core.error(`Error details: ${JSON.stringify({
+          code: headError.code,
+          name: headError.name,
+          message: headError.message,
+          statusCode: headError.$metadata?.httpStatusCode
+        })}`);
+        throw headError;
+      }
+    }
+  } catch (error) {
+    core.error(`S3 access validation failed: ${error.message}`);
     throw error;
   }
 }
@@ -686,7 +835,58 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   try {
     const s3Client = new S3Client({ region });
     
-    const bucketExists = await checkBucketExists(s3Client, bucketName);
+    // Perform comprehensive S3 access validation checks
+    try {
+      await checkS3Access(s3Client, bucketName, region);
+    } catch (accessError) {
+      core.error(`S3 access validation failed: ${accessError.message}`);
+      core.error(`
+Please ensure your IAM policy includes these permissions:
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "s3:HeadBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::${bucketName}",
+                "arn:aws:s3:::${bucketName}/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:CreateBucket"
+            ],
+            "Resource": "arn:aws:s3:::${bucketName}"
+        }
+    ]
+}`);
+      throw accessError;
+    }
+
+    // Check if bucket exists
+    let bucketExists = false;
+    try {
+      bucketExists = await checkBucketExists(s3Client, bucketName);
+    } catch (checkError) {
+      // Enhanced error reporting for bucket check
+      core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
+      core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
+      
+      if (checkError.$metadata?.httpStatusCode === 403) {
+        throw new Error(`Access denied when checking bucket. Ensure your IAM policy includes s3:HeadBucket permission for bucket: ${bucketName}`);
+      } else {
+        throw checkError;
+      }
+    }
+    
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
@@ -694,38 +894,84 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
         core.info(`Bucket ${bucketName} created successfully.`);
       } catch (bucketError) {
         core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
+        core.error(`Error details: ${JSON.stringify({
+          code: bucketError.code,
+          name: bucketError.name,
+          message: bucketError.message,
+          statusCode: bucketError.$metadata?.httpStatusCode
+        })}`);
+        
         if (bucketError.name === 'BucketAlreadyExists' || bucketError.name === 'BucketAlreadyOwnedByYou') {
           core.info(`Bucket name ${bucketName} is already taken. Please try a different name.`);
+        } else if (bucketError.$metadata?.httpStatusCode === 403) {
+          throw new Error(`Access denied when creating bucket. Ensure your IAM policy includes s3:CreateBucket permission.`);
         }
         throw bucketError;
       }
     }
     
+    // Verify the file exists and is readable
+    try {
+      await fs.access(zipFilePath);
+      core.info(`Deployment package verified at ${zipFilePath}`);
+    } catch (fileError) {
+      throw new Error(`Cannot access deployment package at ${zipFilePath}: ${fileError.message}`);
+    }
+    
     const fileContent = await fs.readFile(zipFilePath);
+    core.info(`Read deployment package, size: ${fileContent.length} bytes`);
     
-    const input = {
-      Bucket: bucketName,
-      Key: s3Key,
-      Body: fileContent
-    };
+    // Attempt upload
+    try {
+      const input = {
+        Bucket: bucketName,
+        Key: s3Key,
+        Body: fileContent
+      };
+      
+      core.info(`Sending PutObject request to S3 (bucket: ${bucketName}, key: ${s3Key})`);
+      const command = new PutObjectCommand(input);
+      const response = await s3Client.send(command);
+      
+      core.info(`S3 upload successful, file size: ${fileContent.length} bytes`);
+      
+      return {
+        bucket: bucketName,
+        key: s3Key,
+        versionId: response.VersionId 
+      };
+    } catch (uploadError) {
+      core.error(`Failed to upload file to S3: ${uploadError.name} - ${uploadError.message}`);
+      core.error(`Upload error details: ${JSON.stringify({
+        code: uploadError.code,
+        name: uploadError.name,
+        message: uploadError.message,
+        statusCode: uploadError.$metadata?.httpStatusCode,
+        requestId: uploadError.$metadata?.requestId
+      })}`);
+      
+      if (uploadError.$metadata?.httpStatusCode === 403) {
+        throw new Error('Access denied when uploading to S3. Ensure your IAM policy includes s3:PutObject permission.');
+      }
+      throw uploadError;
+    }
     
-    const command = new PutObjectCommand(input);
-    const response = await s3Client.send(command);
-    
-    core.info(`S3 upload successful, file size: ${fileContent.length} bytes`);
-    
-    return {
-      bucket: bucketName,
-      key: s3Key,
-      versionId: response.VersionId 
-    };
   } catch (error) {
-    core.error(`S3 upload failed: ${error.message}`);
+    core.error(`S3 upload failed: ${error.name} - ${error.message}`);
     
     if (error.code === 'NoSuchBucket') {
       core.error(`Bucket ${bucketName} does not exist and could not be created automatically. Please create it manually or check your permissions.`);
-    } else if (error.code === 'AccessDenied') {
-      core.error('Access denied. Ensure your AWS credentials have permission to upload to this S3 bucket and create buckets if needed.');
+    } else if (error.code === 'AccessDenied' || error.name === 'AccessDenied' || error.$metadata?.httpStatusCode === 403) {
+      core.error('Access denied. Ensure your AWS credentials have the following permissions:');
+      core.error('- s3:HeadBucket (to check if the bucket exists)');
+      core.error('- s3:CreateBucket (to create the bucket if it doesn\'t exist)');
+      core.error('- s3:PutObject (to upload the file to the bucket)');
+      core.error('See s3-troubleshooting.md for a complete IAM policy template.');
+    } else if (error.name === 'CredentialsProviderError') {
+      core.error('AWS credentials not found or invalid. Check your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.');
+    } else if (error.name === 'InvalidBucketName') {
+      core.error(`Invalid bucket name: ${bucketName}. Bucket names must follow S3 naming rules.`);
+      core.error('See s3-troubleshooting.md for S3 bucket naming rules.');
     }
     
     throw error;
@@ -749,5 +995,7 @@ module.exports = {
   generateS3Key,
   uploadToS3,
   checkBucketExists,
-  createBucket
+  createBucket,
+  checkS3Access,
+  validateBucketName
 };
