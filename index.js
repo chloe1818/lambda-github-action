@@ -653,7 +653,7 @@ async function checkBucketExists(s3Client, bucketName) {
     }
     
     // Enhanced error logging
-    core.error(`Error checking if bucket exists: ${error.name} - ${error.message}`);
+    core.error(`Error checking if bucket exists: ${error.$metadata?.httpStatusCode || error.name} - ${error.message}`);
     core.error(`Error details: ${JSON.stringify({
       code: error.code,
       name: error.name,
@@ -662,7 +662,20 @@ async function checkBucketExists(s3Client, bucketName) {
       requestId: error.$metadata?.requestId
     })}`);
     
-    if (error.name === 'AccessDenied' || error.$metadata?.httpStatusCode === 403) {
+    if (error.$metadata?.httpStatusCode === 301) {
+      core.error(`
+REGION MISMATCH ERROR: The bucket "${bucketName}" exists but in a different region than specified (${s3Client.config.region}).
+S3 buckets are global but region-specific. When you get a 301 redirect, it means:
+1. The bucket exists but is in a different region than your request
+2. You need to use the correct region in your configuration
+
+Solutions:
+- Update your region setting to match the bucket's actual region
+- Create a new bucket in the current region (${s3Client.config.region})
+- Or use a different bucket name that doesn't conflict globally
+      `);
+      throw new Error(`Bucket "${bucketName}" exists in a different region than ${s3Client.config.region}`);
+    } else if (error.name === 'AccessDenied' || error.$metadata?.httpStatusCode === 403) {
       core.error('Access denied. Ensure your AWS credentials have s3:HeadBucket permission.');
     }
     
@@ -810,17 +823,33 @@ async function checkS3Access(s3Client, bucketName, region) {
         } catch (error) {
           throw new Error(`Error checking bucket creation permissions: ${error.message}`);
         }
+      } else if (headError.$metadata?.httpStatusCode === 301) {
+        const message = `
+REGION MISMATCH ERROR: Bucket "${bucketName}" exists but in a different region than ${region}.
+
+When you get a 301 redirect with S3, it means the bucket exists but in a different AWS region.
+S3 buckets are global resources (the name must be unique across all of AWS), but they're 
+created in a specific region.
+
+To fix this issue, try one of the following:
+1. Find out which region the bucket is in and update your region setting
+2. Create a new bucket with a different name in region ${region}
+3. If this is your bucket, consider using AWS CLI to find its region:
+   aws s3api get-bucket-location --bucket ${bucketName}
+`;
+        core.error(message);
+        throw new Error(`Bucket "${bucketName}" exists but in a different region (got 301 redirect)`);
       } else if (headError.$metadata?.httpStatusCode === 403) {
         throw new Error(`Access denied - ensure your IAM policy has s3:HeadBucket permission for bucket: ${bucketName}`);
       } else {
-        core.error(`Error checking bucket exists: ${headError.name} - ${headError.message}`);
+        core.error(`Error checking bucket exists: ${headError.name || headError.$metadata?.httpStatusCode} - ${headError.message}`);
         core.error(`Error details: ${JSON.stringify({
           code: headError.code,
           name: headError.name,
           message: headError.message,
           statusCode: headError.$metadata?.httpStatusCode
         })}`);
-        throw headError;
+        throw new Error(`Failed to check if bucket exists: ${headError.$metadata?.httpStatusCode || headError.name} - ${headError.message}`);
       }
     }
   } catch (error) {
