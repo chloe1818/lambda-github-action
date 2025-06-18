@@ -16,10 +16,6 @@ inputs:
   s3-key:
     description: 'S3 key (path) for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip'
     required: false
-  create-s3-bucket:
-    description: 'Whether to automatically create the S3 bucket if it does not exist. If set to false and the bucket does not exist, the action will fail.'
-    required: false
-    default: 'true'
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
     required: false
@@ -53,7 +49,7 @@ inputs:
   timeout:
     description: 'The amount of time (in seconds) that Lambda allows a function to run before stopping it.'
     required: false
-    default: 3
+    default: '3'
   vpc-config:
     description: 'For network connectivity to Amazon Web Services resources in a VPC, specify a list of security groups and subnets in the VPC.'
     required: false
@@ -85,7 +81,7 @@ inputs:
   ephemeral-storage:
     description: 'The size of the functions /tmp directory in MB. The default value is 512, but can be any whole number between 512 and 10,240 MB.'
     required: false
-    default: 512
+    default: '512'
   snap-start: 
     description: 'The functions SnapStart setting.'
     required: false

@@ -76,7 +76,7 @@ async function run() {
 
         if (s3Bucket) {
           try {
-            await uploadToS3(finalZipPath, s3Bucket, s3Key, region, createS3Bucket);
+            await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
             core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
             
             codeParameter = {
@@ -244,7 +244,7 @@ async function run() {
         core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
         
         try {
-          await uploadToS3(finalZipPath, s3Bucket, s3Key, region, createS3Bucket);
+          await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
           core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
           
           codeInput = {
@@ -680,39 +680,36 @@ async function createBucket(s3Client, bucketName, region) {
   }
 }
 
-async function uploadToS3(zipFilePath, bucketName, s3Key, region, createBucketIfNotExist = true) {
+async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
     const s3Client = new S3Client({ region });
     
-    if (createBucketIfNotExist) {
-      const bucketExists = await checkBucketExists(s3Client, bucketName);
-      
-      if (!bucketExists) {
-        core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
-        try {
-          await createBucket(s3Client, bucketName, region);
-          core.info(`Bucket ${bucketName} created successfully.`);
-        } catch (bucketError) {
-          core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
-          if (bucketError.name === 'BucketAlreadyExists' || bucketError.name === 'BucketAlreadyOwnedByYou') {
-            core.info(`Bucket name ${bucketName} is already taken. Please try a different name.`);
-          }
-          throw bucketError;
+    const bucketExists = await checkBucketExists(s3Client, bucketName);
+    if (!bucketExists) {
+      core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
+      try {
+        await createBucket(s3Client, bucketName, region);
+        core.info(`Bucket ${bucketName} created successfully.`);
+      } catch (bucketError) {
+        core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
+        if (bucketError.name === 'BucketAlreadyExists' || bucketError.name === 'BucketAlreadyOwnedByYou') {
+          core.info(`Bucket name ${bucketName} is already taken. Please try a different name.`);
         }
+        throw bucketError;
       }
     }
     
     const fileContent = await fs.readFile(zipFilePath);
     
-    const params = {
+    const input = {
       Bucket: bucketName,
       Key: s3Key,
       Body: fileContent
     };
     
-    const command = new PutObjectCommand(params);
+    const command = new PutObjectCommand(input);
     const response = await s3Client.send(command);
     
     core.info(`S3 upload successful, file size: ${fileContent.length} bytes`);
