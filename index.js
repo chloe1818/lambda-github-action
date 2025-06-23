@@ -195,7 +195,7 @@ async function run() {
           if (error.stack) {
             core.debug(error.stack);
           }
-          return; // Stop execution after S3 upload failure
+          return;
         }
         
       } else {
@@ -216,7 +216,7 @@ async function run() {
             core.debug(error.stack);
           }
           
-          return; // Stop execution after file read failure
+          return; 
         }
         
         codeInput = {
@@ -233,7 +233,6 @@ async function run() {
             
       if (dryRun) {
         core.info(`[DRY RUN] Would update function code with parameters:`);
-        // Clone and remove ZipFile for logging to prevent huge output
         const logInput = {...codeInput};
         if (logInput.ZipFile) {
           logInput.ZipFile = `<Binary data of length ${logInput.ZipFile.length} bytes>`;
