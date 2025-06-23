@@ -16,6 +16,9 @@ inputs:
   s3-key:
     description: 'S3 key (path) for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip'
     required: false
+  image-uri:
+    description: 'URI for a container image in the Amazon ECR registry.'
+    required: false
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
     required: false

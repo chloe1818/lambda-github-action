@@ -23,7 +23,7 @@ async function run() {
       parsedEnvironment, parsedVpcConfig, parsedDeadLetterConfig, 
       parsedTracingConfig, parsedLayers, parsedFileSystemConfigs, 
       parsedImageConfig, parsedSnapStart, parsedLoggingConfig, parsedTags,
-      functionDescription, packageType, dryRun, publish, revisionId,
+      functionDescription, imageUri, packageType, dryRun, publish, revisionId,
       runtime, handler, architectures
     } = inputs;
     
@@ -41,8 +41,11 @@ async function run() {
       'AWS_LAMBDA_GITHUB_ACTION_SOURCE': 'aws-actions/amazon-lambda-deploy'
     };
     
-    core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
-    let finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
+    let finalZipPath;
+    if (!imageUri) {
+      core.info(`Packaging code artifacts from ${codeArtifactsDir}`);
+      finalZipPath = await packageCodeArtifacts(codeArtifactsDir);
+    }
 
     const client = new LambdaClient({
       region
@@ -56,105 +59,21 @@ async function run() {
     core.info(`Checking if ${functionName} exists`);
     let functionExists = await checkFunctionExists(client, functionName);
 
-    if (!functionExists) {
-      if (dryRun) {
-        core.setFailed('DRY RUN MODE can only be used for updating function code of existing functions');
-        return;
-      }
-
-      core.info(`Function ${functionName} doesn't exist, creating new function`);
-
-      if(!role) {
-        core.setFailed('Role ARN must be provided when creating a new function');
-        return;
-      }
-
-      try {
-        core.info('Creating Lambda function with deployment package');
-
-        let codeParameter;
-
-        if (s3Bucket) {
-          try {
-            await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
-            core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
-            
-            codeParameter = {
-              S3Bucket: s3Bucket,
-              S3Key: s3Key,
-              ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
-            };
-          } catch (error) {
-            core.setFailed(`Failed to upload package to S3: ${error.message}`);
-            if (error.stack) {
-              core.debug(error.stack);
-            }
-            throw error;
-          }
-        } else {
-          const zipFileContent = await fs.readFile(finalZipPath);
-          core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`);
-          
-          codeParameter = {
-            ZipFile: zipFileContent,
-            ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
-          };
-        }
-
-        const input = {
-          FunctionName: functionName,
-          Code: codeParameter,
-          ...(runtime && { Runtime: runtime }),
-          ...(role && { Role: role }),
-          ...(handler && { Handler: handler }),
-          ...(functionDescription && { Description: functionDescription }),
-          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
-          ...(timeout && { Timeout: timeout }),
-          ...(packageType && { PackageType: packageType }),
-          ...(publish !== undefined && { Publish: publish }),
-          ...(architectures && { Architectures: Array.isArray(architectures) ? architectures : [architectures] }),
-          ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
-          ...(revisionId && { RevisionId: revisionId }),
-          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          Environment: { Variables: enhancedEnvironment },
-          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
-          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
-          ...(layers && { Layers: parsedLayers }),
-          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
-          ...(imageConfig && { ImageConfig: parsedImageConfig }),
-          ...(snapStart && { SnapStart: parsedSnapStart }),
-          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig }),
-          ...(tags && { Tags: parsedTags }),
-          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
-          ...(codeSigningConfigArn && { CodeSigningConfigArn: codeSigningConfigArn }),
-	      };
-
-        core.info(`Creating new Lambda function: ${functionName}`);
-        const command = new CreateFunctionCommand(input);
-        const response = await client.send(command);
-        
-        core.setOutput('function-arn', response.FunctionArn);
-        if (response.Version) {
-          core.setOutput('version', response.Version);
-        }
-      } catch (error) {
-        if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
-          core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
-        } else if (error.$metadata?.httpStatusCode >= 500) {
-          core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
-        } else if (error.name === 'AccessDeniedException') {
-          core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
-        } else {
-          core.setFailed(`Failed to create function: ${error.message}`);
-        }
-        
-        if (error.stack) {
-          core.debug(error.stack);
-        }
-        throw error; 
-      }
-      core.info('Lambda function created successfully');
-      return;
+    try {
+      await createFunction(client, {
+        functionName, region, finalZipPath, dryRun, role,
+        s3Bucket, s3Key, sourceKmsKeyArn, runtime, handler,
+        functionDescription, parsedMemorySize, timeout,
+        packageType, publish, architectures, ephemeralStorage,
+        revisionId, vpcConfig, enhancedEnvironment, deadLetterConfig,
+        tracingConfig, layers, fileSystemConfigs, imageConfig, imageUri,
+        snapStart, loggingConfig, tags, kmsKeyArn, codeSigningConfigArn,
+        parsedVpcConfig, parsedDeadLetterConfig, parsedTracingConfig,
+        parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
+        parsedSnapStart, parsedLoggingConfig, parsedTags
+      });
+    } catch (error) {
+      throw error;
     }
 
     core.info(`Getting current configuration for function ${functionName}`);
@@ -235,12 +154,26 @@ async function run() {
     }
 
     // Update Function Code
-    core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
+    if (imageUri) {
+      core.info(`Updating function code for ${functionName} with container image: ${imageUri}`);
+    } else {
+      core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
+    }
     
     try {
       let codeInput;
       
-      if (useS3Method) {
+      if (imageUri) {
+        core.info(`Using container image: ${imageUri}`);
+        
+        codeInput = {
+          FunctionName: functionName,
+          ImageUri: imageUri,
+          ...(architectures && { Architectures: Array.isArray(architectures) ? architectures : [architectures] }),
+          ...(publish !== undefined && { Publish: publish }),
+          ...(revisionId && { RevisionId: revisionId })
+        };
+      } else if (useS3Method) {
         core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
         
         try {
@@ -262,7 +195,7 @@ async function run() {
           if (error.stack) {
             core.debug(error.stack);
           }
-          return;
+          return; // Stop execution after S3 upload failure
         }
         
       } else {
@@ -283,7 +216,7 @@ async function run() {
             core.debug(error.stack);
           }
           
-          return;
+          return; // Stop execution after file read failure
         }
         
         codeInput = {
@@ -594,6 +527,144 @@ async function hasConfigurationChanged(currentConfig, updatedConfig) {
   return hasChanged;
 }
 
+async function createFunction(client, inputs) {
+  const {
+    functionName, region, finalZipPath, dryRun, role, s3Bucket, s3Key, 
+    sourceKmsKeyArn, runtime, handler, functionDescription, parsedMemorySize,
+    timeout, packageType, publish, architectures, ephemeralStorage, revisionId,
+    vpcConfig, enhancedEnvironment, deadLetterConfig, tracingConfig,
+    layers, fileSystemConfigs, imageConfig, imageUri, snapStart, loggingConfig, tags,
+    kmsKeyArn, codeSigningConfigArn, parsedVpcConfig, parsedDeadLetterConfig,
+    parsedTracingConfig, parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
+    parsedSnapStart, parsedLoggingConfig, parsedTags
+  } = inputs;
+
+  try {
+    let functionExists = await checkFunctionExists(client, functionName);
+    
+    if (!functionExists) {
+      if (dryRun) {
+        core.setFailed('DRY RUN MODE can only be used for updating function code of existing functions');
+        return;
+      }
+
+      core.info(`Function ${functionName} doesn't exist, creating new function`);
+
+      if(!role) {
+        core.setFailed('Role ARN must be provided when creating a new function');
+        return;
+      }
+
+      try {
+        core.info('Creating Lambda function with deployment package');
+
+        let codeParameter;
+
+        if (imageUri) {
+          core.info(`Using container image: ${imageUri}`);
+          codeParameter = {
+            ImageUri: imageUri
+          };
+        } else if (s3Bucket) {
+          try {
+            await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
+            core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
+            
+            codeParameter = {
+              S3Bucket: s3Bucket,
+              S3Key: s3Key,
+              ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
+            };
+          } catch (error) {
+            core.setFailed(`Failed to upload package to S3: ${error.message}`);
+            if (error.stack) {
+              core.debug(error.stack);
+            }
+            throw error; // Throw to stop the execution flow
+          }
+        } else {
+          try {
+            const zipFileContent = await fs.readFile(finalZipPath);
+            core.info(`Zip file read successfully, size: ${zipFileContent.length} bytes`);
+            
+            codeParameter = {
+              ZipFile: zipFileContent,
+              ...(sourceKmsKeyArn && { SourceKmsKeyArn: sourceKmsKeyArn })
+            };
+          } catch (error) {
+            if (error.code === 'EACCES') {
+              core.setFailed(`Failed to read Lambda deployment package: Permission denied`);
+              core.error('Permission denied. Check file access permissions.');
+            } else {
+              core.setFailed(`Failed to read Lambda deployment package: ${error.message}`);
+            }
+            if (error.stack) {
+              core.debug(error.stack);
+            }
+            throw error; // Throw to stop the execution flow
+          }
+        }
+
+        const input = {
+          FunctionName: functionName,
+          Code: codeParameter,
+          ...(runtime && { Runtime: runtime }),
+          ...(role && { Role: role }),
+          ...(handler && { Handler: handler }),
+          ...(functionDescription && { Description: functionDescription }),
+          ...(parsedMemorySize && { MemorySize: parsedMemorySize }),
+          ...(timeout && { Timeout: timeout }),
+          ...(packageType && { PackageType: packageType }),
+          ...(publish !== undefined && { Publish: publish }),
+          ...(architectures && { Architectures: Array.isArray(architectures) ? architectures : [architectures] }),
+          ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
+          ...(revisionId && { RevisionId: revisionId }),
+          ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
+          Environment: { Variables: enhancedEnvironment },
+          ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
+          ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
+          ...(layers && { Layers: parsedLayers }),
+          ...(fileSystemConfigs && { FileSystemConfigs: parsedFileSystemConfigs }),
+          ...(imageConfig && { ImageConfig: parsedImageConfig }),
+          ...(snapStart && { SnapStart: parsedSnapStart }),
+          ...(loggingConfig && { LoggingConfig: parsedLoggingConfig }),
+          ...(tags && { Tags: parsedTags }),
+          ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
+          ...(codeSigningConfigArn && { CodeSigningConfigArn: codeSigningConfigArn }),
+        };
+
+        core.info(`Creating new Lambda function: ${functionName}`);
+        const command = new CreateFunctionCommand(input);
+        const response = await client.send(command);
+        
+        core.setOutput('function-arn', response.FunctionArn);
+        if (response.Version) {
+          core.setOutput('version', response.Version);
+        }
+        
+        core.info('Lambda function created successfully');
+      } catch (error) {
+        if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
+          core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
+        } else if (error.$metadata?.httpStatusCode >= 500) {
+          core.setFailed(`Server error (${error.$metadata?.httpStatusCode}): ${error.message}. All retry attempts failed.`);
+        } else if (error.name === 'AccessDeniedException') {
+          core.setFailed(`Action failed with error: Permissions error: ${error.message}. Check IAM roles.`);
+        } else {
+          core.setFailed(`Failed to create function: ${error.message}`);
+        }
+        
+        if (error.stack) {
+          core.debug(error.stack);
+        }
+        throw error; 
+      }
+    }
+  } catch (error) {
+    throw error;
+  }
+}
+
 async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) {
   const MAX_WAIT_MINUTES = 30;
   
@@ -708,7 +779,7 @@ async function createBucket(s3Client, bucketName, region) {
       })}`);
       
       if (sendError.name === 'BucketAlreadyExists' || sendError.name === 'BucketAlreadyOwnedByYou') {
-        core.warning(`Bucket name ${bucketName} is already taken but may be owned by another account.`);
+        core.error(`Bucket name ${bucketName} is already taken but may be owned by another account.`);
         throw sendError;
       } else if (sendError.$metadata?.httpStatusCode === 403) {
         core.error('Access denied when creating bucket. Check your IAM permissions for s3:CreateBucket.');
@@ -761,7 +832,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
       
       if (checkError.$metadata?.httpStatusCode === 403) {
-        throw new Error(`Access denied when checking bucket. Ensure your IAM policy includes s3:HeadBucket permission for bucket: ${bucketName}`);
+        throw new Error(`Access denied to S3 bucket`);
       } else {
         throw checkError;
       }
@@ -774,6 +845,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
         core.info(`Bucket ${bucketName} created successfully.`);
       } catch (bucketError) {
         core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
+        core.debug(bucketError.stack || "Bucket error stack trace");
         core.error(`Error details: ${JSON.stringify({
           code: bucketError.code,
           name: bucketError.name,
@@ -794,6 +866,9 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       await fs.access(zipFilePath);
       core.info(`Deployment package verified at ${zipFilePath}`);
     } catch (fileError) {
+      if (fileError.code === 'EACCES') {
+        throw new Error(`Permission denied`);
+      }
       throw new Error(`Cannot access deployment package at ${zipFilePath}: ${fileError.message}`);
     }
     
@@ -873,5 +948,6 @@ module.exports = {
   uploadToS3,
   checkBucketExists,
   createBucket,
-  validateBucketName
+  validateBucketName,
+  createFunction
 };

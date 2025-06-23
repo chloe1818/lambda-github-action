@@ -10,8 +10,6 @@
     "lint:fix": "eslint . --fix"
   },
   "keywords": [
-    "github",
-    "action",
     "aws",
     "lambda",
     "deployment"

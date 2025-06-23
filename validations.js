@@ -38,8 +38,6 @@ function validateRequiredInputs() {
     return { valid: false };
   }
 
-  const region = core.getInput('region', { required: true });
-
   const codeArtifactsDir = core.getInput('code-artifacts-dir');
   if (!codeArtifactsDir) {
     core.setFailed('Code-artifacts-dir must be provided');
@@ -49,7 +47,6 @@ function validateRequiredInputs() {
   return { 
     valid: true, 
     functionName, 
-    region, 
     codeArtifactsDir 
   };
 }
@@ -202,7 +199,8 @@ function validateJsonInputs() {
 
 function getAdditionalInputs() {
   const functionDescription = core.getInput('function-description', { required: false });
-  const packageType = 'Zip';
+  const imageUri = core.getInput('image-uri', { required: false });
+  const packageType = imageUri ? 'Image' : 'Zip';
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
   
   let publish;
@@ -212,6 +210,7 @@ function getAdditionalInputs() {
     publish = true; 
   }
   
+  const region = core.getInput('region', { required: false });
   const revisionId = core.getInput('revision-id', { required: false });
   const runtime = core.getInput('runtime', { required: false }) || 'nodejs20.x';
   const handler = core.getInput('handler', { required: false });
@@ -228,9 +227,11 @@ function getAdditionalInputs() {
 
   return {
     functionDescription,
+    imageUri,
     packageType,
     dryRun,
     publish,
+    region,
     revisionId,
     runtime,
     handler,

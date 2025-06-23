@@ -22,12 +22,15 @@ describe('packageCodeArtifacts function', () => {
     // Mock path functions
     path.join.mockImplementation((...parts) => parts.join('/'));
     path.dirname.mockImplementation((p) => p.substring(0, p.lastIndexOf('/')));
+    path.isAbsolute = jest.fn().mockReturnValue(false);
+    path.resolve = jest.fn().mockImplementation((cwd, dir) => `/resolved/${dir}`);
     
     // Mock fs functions
     fs.mkdir.mockResolvedValue(undefined);
     fs.cp = jest.fn().mockResolvedValue(undefined);
     fs.rm = jest.fn().mockResolvedValue(undefined);
     fs.stat = jest.fn().mockResolvedValue({ size: 12345 });
+    fs.access = jest.fn().mockResolvedValue(undefined);
     
     // Mock fs.readdir to return objects with isDirectory method
     fs.readdir.mockImplementation((dir, options) => {
@@ -274,5 +277,72 @@ describe('packageCodeArtifacts function', () => {
     
     // Check error was logged
     expect(core.error).toHaveBeenCalledWith('Failed to package artifacts: Failed to write zip');
+  });
+
+  test('should verify zip file contents after creation', async () => {
+    const artifactsDir = '/mock/artifacts';
+    const zipPath = await packageCodeArtifacts(artifactsDir);
+    
+    // Create a new AdmZip instance for verification
+    const verificationZip = new AdmZip(zipPath);
+    const entries = verificationZip.getEntries();
+    
+    // Verify entries exist and have expected properties
+    expect(entries).toHaveLength(2);
+    expect(entries[0].entryName).toBe('file1.js');
+    expect(entries[1].entryName).toBe('directory/subfile.js');
+    
+    // Verify file sizes
+    expect(entries[0].header.size).toBe(1024);
+    expect(entries[1].header.size).toBe(2048);
+    
+    // Check zip file size
+    expect(fs.stat).toHaveBeenCalledWith(zipPath);
+  });
+
+  test('should use provided artifact directory path correctly', async () => {
+    // Set up path.resolve to handle the custom path correctly
+    path.resolve = jest.fn().mockImplementation((cwd, dir) => {
+      if (dir === '/custom/artifacts/path') {
+        return dir; // Return as is if it's the custom path
+      }
+      return `/resolved/${dir}`; // Otherwise use a standard format
+    });
+
+    const customArtifactsDir = '/custom/artifacts/path';
+    await packageCodeArtifacts(customArtifactsDir);
+    
+    // When path.isAbsolute returns false, path.resolve is called with process.cwd() and artifactsDir
+    expect(path.resolve).toHaveBeenCalledWith(expect.any(String), customArtifactsDir);
+    
+    // The actual readdir call should be on the resolved path, not directly on customArtifactsDir
+    expect(fs.access).toHaveBeenCalledWith(customArtifactsDir);
+    expect(fs.readdir).toHaveBeenCalledWith(customArtifactsDir);
+  });
+
+  test('should throw error for empty artifacts directory', async () => {
+    // Mock fs.readdir to return an empty array
+    fs.readdir.mockImplementation(() => {
+      return Promise.resolve([]);
+    });
+    
+    const artifactsDir = '/mock/artifacts';
+    
+    // Since the implementation throws an error for empty directories, we should expect that
+    await expect(packageCodeArtifacts(artifactsDir)).rejects.toThrow(
+      `Code artifacts directory '/resolved/${artifactsDir}' is empty, no files to package`
+    );
+  });
+
+  test('should handle artifacts directory access error', async () => {
+    // Mock fs.access to throw an error
+    const accessError = new Error('Directory does not exist');
+    fs.access.mockRejectedValueOnce(accessError);
+    
+    const artifactsDir = '/mock/artifacts';
+    
+    await expect(packageCodeArtifacts(artifactsDir)).rejects.toThrow(
+      `Code artifacts directory '/resolved/${artifactsDir}' does not exist or is not accessible`
+    );
   });
 });
