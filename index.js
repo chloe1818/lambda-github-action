@@ -642,6 +642,10 @@ async function createFunction(client, inputs) {
         }
         
         core.info('Lambda function created successfully');
+        
+        // Wait for the function to become active after creation
+        core.info(`Waiting for function ${functionName} to become active before proceeding`);
+        await waitForFunctionActive(client, functionName);
       } catch (error) {
         if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
           core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
@@ -691,11 +695,69 @@ async function waitForFunctionUpdated(client, functionName, waitForMinutes = 5) 
       throw new Error(`Function ${functionName} not found`);
     } else if (error.$metadata && error.$metadata.httpStatusCode === 403) {
       throw new Error(`Permission denied while checking function ${functionName} status`);
+    } else if (error.message && error.message.includes("currently in the following state: 'Pending'")) {
+      core.warning(`Function ${functionName} is in 'Pending' state. Waiting for it to become active...`);
+      await waitForFunctionActive(client, functionName, waitForMinutes);
+      core.info(`Function ${functionName} is now active`);
     } else {
       core.warning(`Function update check error: ${error.message}`);
       throw new Error(`Error waiting for function ${functionName} update: ${error.message}`);
     }
   }
+}
+
+// Helper function to wait for a function to become active instead of 'Pending'
+async function waitForFunctionActive(client, functionName, waitForMinutes = 5) {
+  const MAX_WAIT_MINUTES = 30;
+  
+  if (waitForMinutes > MAX_WAIT_MINUTES) {
+    waitForMinutes = MAX_WAIT_MINUTES;
+    core.info(`Wait time capped to maximum of ${MAX_WAIT_MINUTES} minutes`);
+  }
+  
+  core.info(`Waiting for function ${functionName} to become active. Will wait for up to ${waitForMinutes} minutes`);
+  
+  const startTime = Date.now();
+  const maxWaitTimeMs = waitForMinutes * 60 * 1000;
+  const DELAY_BETWEEN_CHECKS_MS = 5000; // 5 seconds between checks
+  let lastState = null;
+  
+  while (Date.now() - startTime < maxWaitTimeMs) {
+    try {
+      const command = new GetFunctionConfigurationCommand({ FunctionName: functionName });
+      const response = await client.send(command);
+      
+      const currentState = response.State;
+      
+      // Only log state changes to reduce noise
+      if (currentState !== lastState) {
+        core.info(`Function ${functionName} is in state: ${currentState}`);
+        lastState = currentState;
+      }
+      
+      if (currentState === 'Active') {
+        core.info(`Function ${functionName} is now active`);
+        return;
+      } else if (currentState === 'Failed') {
+        throw new Error(`Function ${functionName} deployment failed with reason: ${response.StateReason || 'Unknown reason'}`);
+      }
+      
+      // Wait before checking again
+      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHECKS_MS));
+    } catch (error) {
+      if (error.name === 'ResourceNotFoundException') {
+        throw new Error(`Function ${functionName} not found`);
+      } else if (error.$metadata && error.$metadata.httpStatusCode === 403) {
+        throw new Error(`Permission denied while checking function ${functionName} status`);
+      } else {
+        core.warning(`Function status check error: ${error.message}`);
+        // Wait before trying again
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHECKS_MS));
+      }
+    }
+  }
+  
+  throw new Error(`Timed out waiting for function ${functionName} to become active after ${waitForMinutes} minutes`);
 }
 
 function generateS3Key(functionName) {
@@ -940,6 +1002,7 @@ module.exports = {
   checkFunctionExists,
   hasConfigurationChanged,
   waitForFunctionUpdated,
+  waitForFunctionActive,
   isEmptyValue,
   cleanNullKeys,
   deepEqual,
