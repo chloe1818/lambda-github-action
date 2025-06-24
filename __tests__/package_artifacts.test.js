@@ -4,6 +4,7 @@ const path = require('path');
 const { glob } = require('glob');
 const AdmZip = require('adm-zip');
 const core = require('@actions/core');
+const os = require('os');
 
 // Mock dependencies
 jest.mock('fs/promises');
@@ -11,13 +12,23 @@ jest.mock('glob');
 jest.mock('adm-zip');
 jest.mock('@actions/core');
 jest.mock('path');
+jest.mock('os');
 
 describe('packageCodeArtifacts function', () => {
+  // Mock date for consistent timestamps in tests
+  const mockTimestamp = 1234567890;
+  
   beforeEach(() => {
     jest.resetAllMocks();
     
+    // Mock Date.now() for consistent timestamps
+    global.Date.now = jest.fn().mockReturnValue(mockTimestamp);
+    
     // Mock process.cwd()
     process.cwd = jest.fn().mockReturnValue('/mock/cwd');
+    
+    // Mock os.tmpdir()
+    os.tmpdir = jest.fn().mockReturnValue('/mock/tmp');
     
     // Mock path functions
     path.join.mockImplementation((...parts) => parts.join('/'));
@@ -84,9 +95,13 @@ describe('packageCodeArtifacts function', () => {
     const artifactsDir = '/mock/artifacts';
     const result = await packageCodeArtifacts(artifactsDir);
     
+    // Expected temp directory and zip path with dynamic names
+    const expectedTempDir = '/mock/tmp/lambda-temp-1234567890';
+    const expectedZipPath = '/mock/tmp/lambda-function-1234567890.zip';
+    
     // Check temp directory cleanup and creation
-    expect(fs.rm).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true, force: true });
-    expect(fs.mkdir).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true });
+    expect(fs.rm).toHaveBeenCalledWith(expectedTempDir, { recursive: true, force: true });
+    expect(fs.mkdir).toHaveBeenCalledWith(expectedTempDir, { recursive: true });
     
     // Check readdir was called with the artifacts directory
     expect(fs.readdir).toHaveBeenCalledWith(expect.any(String), expect.any(Object));
@@ -95,26 +110,26 @@ describe('packageCodeArtifacts function', () => {
     expect(fs.cp).toHaveBeenCalledTimes(2);
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('file1.js'),
-      expect.stringContaining('lambda-package/file1.js'), 
+      expect.stringContaining(`lambda-temp-${mockTimestamp}/file1.js`), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('directory'),
-      expect.stringContaining('lambda-package/directory'), 
+      expect.stringContaining(`lambda-temp-${mockTimestamp}/directory`), 
       { recursive: true }
     );
     
     // Check zip creation
     const zipInstance = AdmZip.mock.results[0].value;
-    expect(zipInstance.addLocalFolder).toHaveBeenCalledWith('/mock/cwd/lambda-package/directory', 'directory');
-    expect(zipInstance.addLocalFile).toHaveBeenCalledWith('/mock/cwd/lambda-package/file1.js');
-    expect(zipInstance.writeZip).toHaveBeenCalledWith('/mock/cwd/lambda-function.zip');
+    expect(zipInstance.addLocalFolder).toHaveBeenCalledWith(`${expectedTempDir}/directory`, 'directory');
+    expect(zipInstance.addLocalFile).toHaveBeenCalledWith(`${expectedTempDir}/file1.js`);
+    expect(zipInstance.writeZip).toHaveBeenCalledWith(expectedZipPath);
     
     // Check logs were written
     expect(core.info).toHaveBeenCalledWith('Creating ZIP file with standard options');
     
     // Check return value
-    expect(result).toBe('/mock/cwd/lambda-function.zip');
+    expect(result).toBe(expectedZipPath);
   });
 
   test('should handle nested directory structures', async () => {
@@ -133,16 +148,19 @@ describe('packageCodeArtifacts function', () => {
     const artifactsDir = '/mock/artifacts';
     await packageCodeArtifacts(artifactsDir);
     
+    // Expected temp directory with dynamic name
+    const expectedTempDir = '/mock/tmp/lambda-temp-1234567890';
+    
     // Check fs.cp was called for top-level items with recursive flag
     expect(fs.cp).toHaveBeenCalledTimes(2);
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('file1.js'),
-      expect.stringContaining('lambda-package/file1.js'), 
+      expect.stringContaining(`${expectedTempDir}/file1.js`), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('dir1'),
-      expect.stringContaining('lambda-package/dir1'), 
+      expect.stringContaining(`${expectedTempDir}/dir1`), 
       { recursive: true }
     );
   });
@@ -164,21 +182,28 @@ describe('packageCodeArtifacts function', () => {
     const artifactsDir = '/mock/artifacts';
     await packageCodeArtifacts(artifactsDir);
     
+    // Expected temp directory with dynamic name
+    const expectedTempDir = '/mock/tmp/lambda-temp-1234567890';
+    
     // Check fs.cp was called for hidden files with recursive flag
     expect(fs.cp).toHaveBeenCalledTimes(3); // file1.js, .env, and .config
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('.env'),
-      expect.stringContaining('lambda-package/.env'), 
+      expect.stringContaining(`${expectedTempDir}/.env`), 
       { recursive: true }
     );
     expect(fs.cp).toHaveBeenCalledWith(
       expect.stringContaining('.config'),
-      expect.stringContaining('lambda-package/.config'), 
+      expect.stringContaining(`${expectedTempDir}/.config`), 
       { recursive: true }
     );
   });
 
   test('should handle error during directory cleanup', async () => {
+    // Expected paths with dynamic names
+    const expectedTempDir = '/mock/tmp/lambda-temp-1234567890';
+    const expectedZipPath = '/mock/tmp/lambda-function-1234567890.zip';
+    
     // Mock fs.rm to fail but allow the test to continue
     const rmError = new Error('Failed to remove directory');
     fs.rm.mockRejectedValueOnce(rmError);
@@ -200,7 +225,7 @@ describe('packageCodeArtifacts function', () => {
     
     // The function should catch the error and continue
     expect(fs.mkdir).toHaveBeenCalled();
-    expect(result).toBe('/mock/cwd/lambda-function.zip');
+    expect(result).toBe(expectedZipPath);
   });
 
   test('should handle error during directory creation', async () => {

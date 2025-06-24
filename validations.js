@@ -1,7 +1,14 @@
 const core = require('@actions/core');
 
 function validateNumericInputs() {
-  const ephemeralStorage = parseInt(core.getInput('ephemeral-storage', { required: false })) || 512;
+  const ephemeralStorageInput = core.getInput('ephemeral-storage', { required: false });
+  const ephemeralStorage = ephemeralStorageInput ? parseInt(ephemeralStorageInput) : 512;
+  
+  if (ephemeralStorageInput && isNaN(ephemeralStorage)) {
+    core.setFailed(`Ephemeral storage must be a number, got: ${ephemeralStorageInput}`);
+    return { valid: false };
+  }
+  
   if (ephemeralStorage < 512 || ephemeralStorage > 10240) {
     core.setFailed(`Ephemeral storage must be between 512 MB and 10,240 MB, got: ${ephemeralStorage}`);
     return { valid: false };
@@ -11,15 +18,17 @@ function validateNumericInputs() {
   let parsedMemorySize;
   if (memorySize !== '') {
     parsedMemorySize = parseInt(memorySize);
-    if (isNaN(parsedMemorySize) || parsedMemorySize < 128 || parsedMemorySize > 10240) {
-      core.setFailed(`Memory size must be between 128 MB and 10,240 MB, got: ${memorySize}`);
+    if (isNaN(parsedMemorySize)) {
+      core.setFailed(`Memory size must be a number, got: ${memorySize}`);
       return { valid: false };
     }
   }
 
-  const timeout = parseInt(core.getInput('timeout', { required: false })) || 3;
-  if (timeout < 1 || timeout > 900) {
-    core.setFailed(`Timeout must be between 1 and 900 seconds, got: ${timeout}`);
+  const timeoutInput = core.getInput('timeout', { required: false });
+  const timeout = timeoutInput ? parseInt(timeoutInput) : 3;
+  
+  if (timeoutInput && isNaN(timeout)) {
+    core.setFailed(`Timeout must be a number, got: ${timeoutInput}`);
     return { valid: false };
   }
 
@@ -199,8 +208,6 @@ function validateJsonInputs() {
 
 function getAdditionalInputs() {
   const functionDescription = core.getInput('function-description', { required: false });
-  const imageUri = core.getInput('image-uri', { required: false });
-  const packageType = imageUri ? 'Image' : 'Zip';
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
   
   let publish;
@@ -212,9 +219,9 @@ function getAdditionalInputs() {
   
   const region = core.getInput('region', { required: false });
   const revisionId = core.getInput('revision-id', { required: false });
-  const runtime = core.getInput('runtime', { required: false }) || 'nodejs20.x';
+  const runtime = core.getInput('runtime', { required: false });
   const handler = core.getInput('handler', { required: false });
-  const architectures = core.getInput('architectures', { required: false }) || 'x86_64';
+  const architectures = core.getInput('architectures', { required: false });
   const s3Bucket = core.getInput('s3-bucket', { required: false });
   let s3Key = core.getInput('s3-key', { required: false });
   let createS3Bucket;
@@ -224,11 +231,11 @@ function getAdditionalInputs() {
   } catch (error) {
     createS3Bucket = true; 
   }
+  
+  const useS3Method = !!s3Bucket;
 
   return {
     functionDescription,
-    imageUri,
-    packageType,
     dryRun,
     publish,
     region,
@@ -238,7 +245,8 @@ function getAdditionalInputs() {
     architectures,
     s3Bucket,
     s3Key,
-    createS3Bucket
+    createS3Bucket,
+    useS3Method
   };
 }
 

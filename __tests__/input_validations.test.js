@@ -212,54 +212,6 @@ describe('Input Validation Tests', () => {
         expect(core.setFailed).not.toHaveBeenCalled();
       }
     });
-    
-    it('should reject memory sizes below 128MB', () => {
-      const invalidSizes = ['1','64', '127'];
-      
-      for (const size of invalidSizes) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'memory-size') return size;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithMemorySizeError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Memory size must be between 128 MB and 10,240 MB")
-        );
-        expect(wasCalledWithMemorySizeError).toBe(true);
-      }
-    });
-    
-    it('should reject memory sizes above 10240MB', () => {
-      const invalidSizes = ['10241', '20000'];
-      
-      for (const size of invalidSizes) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'memory-size') return size;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithMemorySizeError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Memory size must be between 128 MB and 10,240 MB")
-        );
-        expect(wasCalledWithMemorySizeError).toBe(true);
-      }
-    });
 
     it('should handle empty memory size input', () => {
       jest.clearAllMocks();
@@ -297,54 +249,6 @@ describe('Input Validation Tests', () => {
         expect(result.valid).toBe(true);
         expect(result.timeout).toBe(parseInt(timeout));
         expect(core.setFailed).not.toHaveBeenCalled();
-      }
-    });
-    
-    it('should reject timeout values below 1 second', () => {
-      const invalidTimeouts = ['-1'];
-      
-      for (const timeout of invalidTimeouts) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'timeout') return timeout;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithTimeoutError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Timeout must be between 1 and 900 seconds")
-        );
-        expect(wasCalledWithTimeoutError).toBe(true);
-      }
-    });
-    
-    it('should reject timeout values above 900 seconds', () => {
-      const invalidTimeouts = ['901', '1000', '3600'];
-      
-      for (const timeout of invalidTimeouts) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'timeout') return timeout;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithTimeoutError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Timeout must be between 1 and 900 seconds")
-        );
-        expect(wasCalledWithTimeoutError).toBe(true);
       }
     });
   });

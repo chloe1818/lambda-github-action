@@ -16,9 +16,6 @@ inputs:
   s3-key:
     description: 'S3 key (path) for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip'
     required: false
-  image-uri:
-    description: 'URI for a container image in the Amazon ECR registry.'
-    required: false
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
     required: false
@@ -33,7 +30,6 @@ inputs:
   architectures:
     description: 'The instruction set architecture that the function supports.'
     required: false
-    default: 'x86_64'
   source-kms-key-arn:
     description: 'The ARN of the Key Management Service (KMS) customer managed key that is used to encrypt your functions .zip deployment package'
     required: false
@@ -57,12 +53,11 @@ inputs:
     description: 'For network connectivity to Amazon Web Services resources in a VPC, specify a list of security groups and subnets in the VPC.'
     required: false
   environment:
-    description: (Optional) Environment variables as a JSON string (e.g. {"ENV":"prod"})
+    description: 'Environment variables as a JSON string (e.g. {"ENV":"prod"})'
     required: false
   runtime:
     description: 'The identifier of the runtime. Required for .zip file'
     required: false
-    default: 'nodejs22.x'
   dead-letter-config:
     description: 'Specifies the queue or topic where Lambda sends asynchronous events when they fail processing.'
     required: false
