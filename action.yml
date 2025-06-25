@@ -1,11 +1,11 @@
-name: Deploy AWS Lambda Function
-description: Deploys an AWS Lambda function using the AWS SDK.
+name: GitHub Action for Lambda Function Deployment
+description: This action updates the code and configuration of the Lambda function provided by the user. If the function does not exist, a new one will be created.
 inputs:
   function-name:
-    description: 'Name of the Lambda function'
+    description: 'Name of the Lambda function.'
     required: true
   region:
-    description: 'AWS region'
+    description: 'AWS region. If no region is provided, the default is us-east-1.'
     required: false
   code-artifacts-dir:
     description: 'The path to a directory of code artifacts to zip and deploy to Lambda.'
@@ -14,16 +14,15 @@ inputs:
     description: 'S3 bucket name to use for Lambda deployment package. If provided, S3 deployment method will be used instead of direct upload.'
     required: false
   s3-key:
-    description: 'S3 key (path) for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip'
+    description: 'S3 key for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip.'
     required: false
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
     required: false
-    default: 'true'
   dry-run:
     description: 'Set true to validate the request parameters and access permissions without modifying the function code. Applicable for updating function code only. Creating and updating function configuration will be skipped since they do not support dry run.'
     required: false
-    default: 'true'
+    default: 'false'
   revision-id: 
     description: 'Update the function only if the revision ID matches the ID that is specified.'
     required: false
@@ -31,7 +30,7 @@ inputs:
     description: 'The instruction set architecture that the function supports.'
     required: false
   source-kms-key-arn:
-    description: 'The ARN of the Key Management Service (KMS) customer managed key that is used to encrypt your functions .zip deployment package'
+    description: 'The ARN of the Key Management Service (KMS) customer managed key that is used to encrypt your functions .zip deployment package.'
     required: false
   role:
     description: 'The Amazon Resource Name (ARN) of the functions execution role. Required when creating a new function.'
@@ -40,20 +39,19 @@ inputs:
     description: 'The name of the method within your code that Lambda calls to run your function.'
     required: false
   function-description:
-    description: 'A description of the function'
+    description: 'A description of the function.'
     required: false
   memory-size:
-    description: 'The amount of memory available to the function at runtime'
+    description: 'The amount of memory available to the function at runtime.'
     required: false
   timeout:
     description: 'The amount of time (in seconds) that Lambda allows a function to run before stopping it.'
     required: false
-    default: '3'
   vpc-config:
     description: 'For network connectivity to Amazon Web Services resources in a VPC, specify a list of security groups and subnets in the VPC.'
     required: false
   environment:
-    description: 'Environment variables as a JSON string (e.g. {"ENV":"prod"})'
+    description: 'Environment variables as a JSON string'
     required: false
   runtime:
     description: 'The identifier of the runtime. Required for .zip file'
@@ -79,7 +77,6 @@ inputs:
   ephemeral-storage:
     description: 'The size of the functions /tmp directory in MB. The default value is 512, but can be any whole number between 512 and 10,240 MB.'
     required: false
-    default: '512'
   snap-start: 
     description: 'The functions SnapStart setting.'
     required: false

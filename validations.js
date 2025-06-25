@@ -2,15 +2,9 @@ const core = require('@actions/core');
 
 function validateNumericInputs() {
   const ephemeralStorageInput = core.getInput('ephemeral-storage', { required: false });
-  const ephemeralStorage = ephemeralStorageInput ? parseInt(ephemeralStorageInput) : 512;
-  
+  const ephemeralStorage = parseInt(ephemeralStorageInput);
   if (ephemeralStorageInput && isNaN(ephemeralStorage)) {
     core.setFailed(`Ephemeral storage must be a number, got: ${ephemeralStorageInput}`);
-    return { valid: false };
-  }
-  
-  if (ephemeralStorage < 512 || ephemeralStorage > 10240) {
-    core.setFailed(`Ephemeral storage must be between 512 MB and 10,240 MB, got: ${ephemeralStorage}`);
     return { valid: false };
   }
 
@@ -25,8 +19,7 @@ function validateNumericInputs() {
   }
 
   const timeoutInput = core.getInput('timeout', { required: false });
-  const timeout = timeoutInput ? parseInt(timeoutInput) : 3;
-  
+  const timeout = parseInt(timeoutInput);
   if (timeoutInput && isNaN(timeout)) {
     core.setFailed(`Timeout must be a number, got: ${timeoutInput}`);
     return { valid: false };
@@ -209,14 +202,7 @@ function validateJsonInputs() {
 function getAdditionalInputs() {
   const functionDescription = core.getInput('function-description', { required: false });
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
-  
-  let publish;
-  try {
-    publish = core.getBooleanInput('publish', { required: false });
-  } catch (error) {
-    publish = true; 
-  }
-  
+  let publish = false;
   const region = core.getInput('region', { required: false });
   const revisionId = core.getInput('revision-id', { required: false });
   const runtime = core.getInput('runtime', { required: false });
@@ -224,8 +210,14 @@ function getAdditionalInputs() {
   const architectures = core.getInput('architectures', { required: false });
   const s3Bucket = core.getInput('s3-bucket', { required: false });
   let s3Key = core.getInput('s3-key', { required: false });
-  let createS3Bucket;
   
+  try {
+    publish = core.getBooleanInput('publish', { required: false });
+  } catch (error) {
+    publish = false;
+  }
+  
+  let createS3Bucket = true;
   try {
     createS3Bucket = core.getBooleanInput('create-s3-bucket', { required: false });
   } catch (error) {

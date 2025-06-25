@@ -274,54 +274,6 @@ describe('Input Validation Tests', () => {
         expect(core.setFailed).not.toHaveBeenCalled();
       }
     });
-    
-    it('should reject ephemeral storage values below 512MB', () => {
-      const invalidStorageValues = ['128', '511'];
-      
-      for (const storage of invalidStorageValues) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'ephemeral-storage') return storage;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithStorageError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Ephemeral storage must be between 512 MB and 10,240 MB")
-        );
-        expect(wasCalledWithStorageError).toBe(true);
-      }
-    });
-    
-    it('should reject ephemeral storage values above 10240MB', () => {
-      const invalidStorageValues = ['10241', '20000'];
-      
-      for (const storage of invalidStorageValues) {
-        jest.clearAllMocks();
-        core.getInput.mockImplementation((name) => {
-          if (name === 'ephemeral-storage') return storage;
-          if (name === 'function-name') return 'test-function';
-          if (name === 'region') return 'us-east-1';
-          if (name === 'code-artifacts-dir') return './src';
-          return '';
-        });
-        
-        const result = originalValidations.validateAllInputs();
-        expect(result.valid).toBe(false);
-        
-        // Check if setFailed was called with an error message containing the expected text
-        const wasCalledWithStorageError = core.setFailed.mock.calls.some(call => 
-          call[0] && call[0].includes("Ephemeral storage must be between 512 MB and 10,240 MB")
-        );
-        expect(wasCalledWithStorageError).toBe(true);
-      }
-    });
   });
   
   describe('Integration with index.js', () => {
@@ -406,7 +358,7 @@ describe('Input Validation Tests', () => {
       expect(result.publish).toBe(true);
     });
     
-    it('should default publish flag to true when not specified', () => {
+    it('should default publish flag to false when not specified', () => {
       // Mock getBooleanInput to throw an error for 'publish'
       core.getBooleanInput.mockImplementation((name) => {
         if (name === 'publish') throw new Error('Input not found');
@@ -422,7 +374,7 @@ describe('Input Validation Tests', () => {
       core.getInput.mockImplementation((name) => inputs[name] || '');
       
       const result = originalValidations.getAdditionalInputs();
-      expect(result.publish).toBe(true);
+      expect(result.publish).toBe(false);
     });
   });
 });

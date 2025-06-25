@@ -1,5 +1,5 @@
 {
-  "name": "github-action-lambda-deploy",
+  "name": "@amzn/github-action-lambda-deploy",
   "version": "1.0.0",
   "description": "GitHub Action for AWS Lambda Function Deployment",
   "main": "index.js",
