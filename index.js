@@ -65,7 +65,7 @@ async function run() {
       core.info(`No S3 key provided. Auto-generated key: ${s3Key}`);
     }
 
-    let functionExists ;
+    let functionExists;
     if (!dryRun) {
       core.info(`Checking if ${functionName} exists`);
       functionExists = await checkFunctionExists(client, functionName);
@@ -75,6 +75,7 @@ async function run() {
       if (!functionExists) {
         core.setFailed('DRY RUN MODE can only be used for updating function code of existing functions');
         return; 
+      }
     }
     
     // Creating zip file
@@ -176,7 +177,6 @@ async function run() {
 
     core.info('Lambda function deployment completed successfully');
     
-  }
   } catch (error) {
     if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
       core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
