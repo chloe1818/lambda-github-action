@@ -48,7 +48,6 @@ async function run() {
       tls: true, // Explicitly require TLS
       requestHandler: new NodeHttpHandler({
         httpsAgent: new https.Agent({
-          secureProtocol: 'TLSv1_2_method', // Enforce TLS 1.2 as minimum
           minVersion: 'TLSv1.2',
           maxVersion: 'TLSv1.3',
           ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
@@ -1004,7 +1003,6 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       tls: true, // Explicitly require TLS
       requestHandler: new NodeHttpHandler({
         httpsAgent: new https.Agent({
-          secureProtocol: 'TLSv1_2_method', // Enforce TLS 1.2 as minimum
           minVersion: 'TLSv1.2',
           maxVersion: 'TLSv1.3',
           ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
