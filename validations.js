@@ -46,10 +46,23 @@ function validateRequiredInputs() {
     return { valid: false };
   }
 
+  const handler = core.getInput('handler', { required: true });
+  if (!handler) {
+    core.setFailed('Handler must be provided')
+    return { valid: false };
+  }
+
+  const runtime = core.getInput('runtime', { required: true });
+  if (!runtime) {
+    core.setFailed('Runtime must be provided')
+    return { valid: false };
+  }
+
   return { 
     valid: true, 
     functionName, 
-    codeArtifactsDir 
+    codeArtifactsDir,
+    handler 
   };
 }
 
@@ -205,8 +218,6 @@ function getAdditionalInputs() {
   let publish = false;
   const region = core.getInput('region', { required: false });
   const revisionId = core.getInput('revision-id', { required: false });
-  const runtime = core.getInput('runtime', { required: false });
-  const handler = core.getInput('handler', { required: false });
   const architectures = core.getInput('architectures', { required: false });
   const s3Bucket = core.getInput('s3-bucket', { required: false });
   let s3Key = core.getInput('s3-key', { required: false });
@@ -232,8 +243,6 @@ function getAdditionalInputs() {
     publish,
     region,
     revisionId,
-    runtime,
-    handler,
     architectures,
     s3Bucket,
     s3Key,

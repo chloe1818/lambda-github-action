@@ -8,6 +8,9 @@ const {
   CreateFunctionCommand,
   waitUntilFunctionUpdated
 } = require('@aws-sdk/client-lambda');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
+const https = require('https');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const mainModule = require('../index');
@@ -18,6 +21,19 @@ jest.mock('@actions/core');
 
 // Mock Lambda client
 jest.mock('@aws-sdk/client-lambda');
+
+// Mock NodeHttpHandler and https Agent
+jest.mock('@smithy/node-http-handler', () => ({
+  NodeHttpHandler: jest.fn().mockImplementation(() => ({
+    // Mock implementation of NodeHttpHandler
+  }))
+}));
+
+jest.mock('https', () => ({
+  Agent: jest.fn().mockImplementation(() => ({
+    // Mock implementation of https.Agent
+  }))
+}));
 
 // Mock fs/promises
 jest.mock('fs/promises', () => ({
@@ -827,16 +843,22 @@ describe('Comprehensive Error Handling Tests', () => {
     });
     
     test('should handle ZIP validation failures', async () => {
+      // Make sure path.isAbsolute handles null/undefined safely
+      path.isAbsolute.mockImplementation((p) => p && p.startsWith('/'));
+      
       // Mock AdmZip constructor for verification to throw an error
       const AdmZip = require('adm-zip');
-      AdmZip.mockImplementationOnce(() => {
+      AdmZip.mockImplementation((zipPath) => {
+        if (zipPath) {
+          // This is the verification call (second instance)
+          throw new Error('ZIP file corrupt');
+        }
+        // This is the initial creation call (first instance)
         return {
           addLocalFolder: jest.fn(),
           addLocalFile: jest.fn(),
           writeZip: jest.fn()
         };
-      }).mockImplementationOnce(() => {
-        throw new Error('ZIP file corrupt');
       });
       
       await expect(mainModule.packageCodeArtifacts('/mock/src')).rejects.toThrow(

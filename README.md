@@ -269,7 +269,10 @@ If you're using the S3 deployment method, ensure your IAM role also has the foll
       "Action": [
         "s3:HeadBucket",
         "s3:CreateBucket",
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:PutPublicAccessBlock",
+        "s3:PutBucketEncryption",
+        "s3:PutBucketVersioning"
       ],
       "Resource": [
         "arn:aws:s3:::<bucket_name>",
@@ -283,5 +286,3 @@ If you're using the S3 deployment method, ensure your IAM role also has the foll
 We recommend reading [AWS Lambda Security Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/security-best-practices.html) for more information on securing your Lambda functions.
 
 ## License
-
-
