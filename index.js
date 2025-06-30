@@ -1,9 +1,12 @@
 const core = require('@actions/core');
-const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
-const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketPolicyCommand } = require('@aws-sdk/client-s3');
+const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
+const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
+const https = require('https');
+const crypto = require('crypto');
 const validations = require('./validations');
 
 async function run() {
@@ -38,10 +41,21 @@ async function run() {
     const customUserAgent = `${actionName}/${actionRepo}@${actionRef}`;
     core.info(`Setting custom user agent: ${customUserAgent}`);
     
-    // Creating new Lambda client 
+    // Creating new Lambda client with secure configuration
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      customUserAgent: customUserAgent
+      customUserAgent: customUserAgent,
+      tls: true, // Explicitly require TLS
+      requestHandler: new NodeHttpHandler({
+        httpsAgent: new https.Agent({
+          secureProtocol: 'TLSv1_2_method', // Enforce TLS 1.2 as minimum
+          minVersion: 'TLSv1.2',
+          maxVersion: 'TLSv1.3',
+          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
+          rejectUnauthorized: true, // Reject unauthorized certificates
+          secureOptions: crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1
+        })
+      })
     });
     
     // Handling S3 Buckets
@@ -176,7 +190,7 @@ async function run() {
   }
 }
 
-// Helper function for zip files
+// Helper functions for zip files
 async function packageCodeArtifacts(artifactsDir) {
   const tempDir = path.join(require('os').tmpdir(), `lambda-temp-${Date.now()}`);
   const zipPath = path.join(require('os').tmpdir(), `lambda-function-${Date.now()}.zip`);
@@ -189,7 +203,8 @@ async function packageCodeArtifacts(artifactsDir) {
     
     await fs.mkdir(tempDir, { recursive: true });
 
-    const resolvedArtifactsDir = path.isAbsolute(artifactsDir) ? artifactsDir : path.resolve(process.cwd(), artifactsDir);
+    const workingDir = process.cwd();
+    const resolvedArtifactsDir = validateAndResolvePath(artifactsDir, workingDir);
     
     core.info(`Copying artifacts from ${resolvedArtifactsDir} to ${tempDir}`);
     
@@ -260,6 +275,19 @@ async function packageCodeArtifacts(artifactsDir) {
     core.error(`Failed to package artifacts: ${error.message}`);
     throw error;
   }
+}
+
+function validateAndResolvePath(userPath, basePath) {
+  const normalizedPath = path.normalize(userPath);
+  const resolvedPath = path.isAbsolute(normalizedPath) ? normalizedPath : path.resolve(basePath, normalizedPath);
+  const relativePath = path.relative(basePath, resolvedPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(
+      `Security error: Path traversal attempt detected. ` +
+      `The path '${userPath}' resolves to '${resolvedPath}' which is outside the allowed directory '${basePath}'.`
+    );
+  }
+  return resolvedPath;
 }
 
 //Helper function for checking if function exists
@@ -390,7 +418,6 @@ async function createFunction(client, inputs) {
         
         core.info('Lambda function created successfully');
         
-        // Wait for the function to become active after creation
         core.info(`Waiting for function ${functionName} to become active before proceeding`);
         await waitForFunctionActive(client, functionName);
       } catch (error) {
@@ -874,6 +901,48 @@ async function createBucket(s3Client, bucketName, region) {
       core.info(`Successfully created S3 bucket: ${bucketName}`);
       core.info(`Bucket location: ${response.Location}`);
       
+      // Apply security configurations after bucket creation
+      try {
+        core.info(`Configuring public access block for bucket: ${bucketName}`);
+        await s3Client.send(new PutPublicAccessBlockCommand({
+          Bucket: bucketName,
+          PublicAccessBlockConfiguration: {
+            BlockPublicAcls: true,
+            IgnorePublicAcls: true,
+            BlockPublicPolicy: true,
+            RestrictPublicBuckets: true
+          }
+        }));
+        
+        core.info(`Enabling default encryption for bucket: ${bucketName}`);
+        await s3Client.send(new PutBucketEncryptionCommand({
+          Bucket: bucketName,
+          ServerSideEncryptionConfiguration: {
+            Rules: [
+              {
+                ApplyServerSideEncryptionByDefault: {
+                  SSEAlgorithm: 'AES256'
+                },
+                BucketKeyEnabled: true
+              }
+            ]
+          }
+        }));
+        
+        core.info(`Enabling versioning for bucket: ${bucketName}`);
+        await s3Client.send(new PutBucketVersioningCommand({
+          Bucket: bucketName,
+          VersioningConfiguration: {
+            Status: 'Enabled'
+          }
+        }));
+        
+        core.info(`Security configurations successfully applied to bucket: ${bucketName}`);
+      } catch (securityError) {
+        core.warning(`Applied partial security settings to bucket. Some security features couldn't be enabled: ${securityError.message}`);
+        core.debug(securityError.stack);
+      }
+      
       return true;
     } catch (sendError) {
       core.error(`Error creating bucket: ${sendError.name} - ${sendError.message}`);
@@ -931,7 +1000,18 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   
   try {
     const s3Client = new S3Client({ 
-      region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+      region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+      tls: true, // Explicitly require TLS
+      requestHandler: new NodeHttpHandler({
+        httpsAgent: new https.Agent({
+          secureProtocol: 'TLSv1_2_method', // Enforce TLS 1.2 as minimum
+          minVersion: 'TLSv1.2',
+          maxVersion: 'TLSv1.3',
+          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
+          rejectUnauthorized: true, // Reject unauthorized certificates
+          secureOptions: crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1
+        })
+      })
     });
     let bucketExists = false;
     try {
