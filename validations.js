@@ -62,7 +62,8 @@ function validateRequiredInputs() {
     valid: true, 
     functionName, 
     codeArtifactsDir,
-    handler 
+    handler,
+    runtime
   };
 }
 
