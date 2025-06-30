@@ -213,22 +213,18 @@ describe('Lambda Function Existence Check', () => {
     }, 300000); // Increase timeout to 2 minutes for this specific test
 
     it('should error when role is not provided for a new function', async () => {
-      // Setup function not existing
-      const error = new Error('Function not found');
-      error.name = 'ResourceNotFoundException';
-      mockSend.mockRejectedValueOnce(error);
-      
       // Remove role from inputs
       inputs.role = '';
       
       const client = new LambdaClient({ region: 'us-east-1' });
       
       // Call createFunction
-      await index.createFunction(client, inputs);
+      await index.createFunction(client, inputs, false); // Explicitly set functionExists to false
       
       // Verify error was set
       expect(core.setFailed).toHaveBeenCalledWith('Role ARN must be provided when creating a new function');
-      expect(mockSend).toHaveBeenCalledTimes(1); // Only the check function call
+      // The implementation validates role before making API calls, so expect no calls
+      expect(mockSend).toHaveBeenCalledTimes(0);
     });
 
     it('should upload to S3 when bucket is provided', async () => {

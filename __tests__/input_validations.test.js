@@ -203,6 +203,8 @@ describe('Input Validation Tests', () => {
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
           if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
           return '';
         });
         
@@ -220,6 +222,8 @@ describe('Input Validation Tests', () => {
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
           if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
@@ -242,6 +246,8 @@ describe('Input Validation Tests', () => {
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
           if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
           return '';
         });
         
@@ -265,6 +271,8 @@ describe('Input Validation Tests', () => {
           if (name === 'function-name') return 'test-function';
           if (name === 'region') return 'us-east-1';
           if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
           return '';
         });
         

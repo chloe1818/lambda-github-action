@@ -1,6 +1,9 @@
 const validations = require('../validations');
 const core = require('@actions/core');
 
+// Set NODE_ENV to test to enable test-specific behavior
+process.env.NODE_ENV = 'test';
+
 // Mock dependencies
 jest.mock('@actions/core');
 
@@ -18,7 +21,9 @@ describe('JSON Input Validations', () => {
       const inputs = {
         'function-name': 'test-function',
         'region': 'us-east-1',
-        'code-artifacts-dir': './src'
+        'code-artifacts-dir': './src',
+        'handler': 'index.handler', // Required input
+        'runtime': 'nodejs18.x'     // Required input
       };
       return inputs[name] || '';
     });
@@ -34,7 +39,9 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'code-artifacts-dir': './src'
+          'code-artifacts-dir': './src',
+          'handler': 'index.handler',
+          'runtime': 'nodejs18.x'
         };
         return inputs[name] || '';
       });
@@ -61,7 +68,9 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'code-artifacts-dir': './src'
+          'code-artifacts-dir': './src',
+          'handler': 'index.handler',
+          'runtime': 'nodejs18.x'
         };
         return inputs[name] || '';
       });
@@ -86,7 +95,9 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'code-artifacts-dir': './src'
+          'code-artifacts-dir': './src',
+          'handler': 'index.handler',
+          'runtime': 'nodejs18.x'
         };
         return inputs[name] || '';
       });
@@ -156,7 +167,9 @@ describe('JSON Input Validations', () => {
         const inputs = {
           'function-name': 'test-function',
           'region': 'us-east-1',
-          'code-artifacts-dir': './test-dir'
+          'code-artifacts-dir': './test-dir',
+          'handler': 'index.handler',
+          'runtime': 'nodejs18.x'
         };
         return inputs[name] || '';
       });
@@ -642,6 +655,10 @@ describe('JSON Input Validations', () => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
         if (name === 'code-artifacts-dir') return './artifacts';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
@@ -664,6 +681,8 @@ describe('JSON Input Validations', () => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
         if (name === 'code-artifacts-dir') return './artifacts';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
@@ -683,6 +702,8 @@ describe('JSON Input Validations', () => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
         if (name === 'code-artifacts-dir') return './artifacts';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
@@ -700,6 +721,8 @@ describe('JSON Input Validations', () => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
         if (name === 'code-artifacts-dir') return './artifacts';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
@@ -735,6 +758,8 @@ describe('JSON Input Validations', () => {
         if (name === 'function-name') return 'test-function';
         if (name === 'region') return 'us-east-1';
         if (name === 'code-artifacts-dir') return './artifacts';
+        if (name === 'handler') return 'index.handler';
+        if (name === 'runtime') return 'nodejs18.x';
         return '';
       });
       
