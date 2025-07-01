@@ -1,4 +1,5 @@
 const core = require('@actions/core');
+const path = require('path');
 
 function validateNumericInputs() {
   const ephemeralStorageInput = core.getInput('ephemeral-storage', { required: false });
@@ -294,6 +295,20 @@ function validateKmsKeyArn(arn) {
   return true;
 }
 
+function validateAndResolvePath(userPath, basePath) {
+  const normalizedPath = path.normalize(userPath);
+  const resolvedPath = path.isAbsolute(normalizedPath) ? normalizedPath : path.resolve(basePath, normalizedPath);
+  const relativePath = path.relative(basePath, resolvedPath);
+
+  if (relativePath && (relativePath.startsWith('..') || path.isAbsolute(relativePath))) {
+    throw new Error(
+      `Security error: Path traversal attempt detected. ` +
+      `The path '${userPath}' resolves to '${resolvedPath}' which is outside the allowed directory '${basePath}'.`
+    );
+  }
+  return resolvedPath;
+}
+
 function validateAllInputs() {
   const requiredInputs = validateRequiredInputs();
   if (!requiredInputs.valid) {
@@ -333,5 +348,6 @@ module.exports = {
   validateRoleArn,
   validateCodeSigningConfigArn,
   validateKmsKeyArn,
+  validateAndResolvePath,
   getAdditionalInputs
 };

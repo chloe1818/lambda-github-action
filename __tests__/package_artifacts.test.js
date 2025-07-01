@@ -5,6 +5,7 @@ const { glob } = require('glob');
 const AdmZip = require('adm-zip');
 const core = require('@actions/core');
 const os = require('os');
+const validations = require('../validations');
 
 // Mock dependencies
 jest.mock('fs/promises');
@@ -13,6 +14,7 @@ jest.mock('adm-zip');
 jest.mock('@actions/core');
 jest.mock('path');
 jest.mock('os');
+jest.mock('../validations');
 
 describe('packageCodeArtifacts function', () => {
   // Mock date for consistent timestamps in tests
@@ -326,21 +328,16 @@ describe('packageCodeArtifacts function', () => {
   });
 
   test('should use provided artifact directory path correctly', async () => {
-    // Set up path.resolve to handle the custom path correctly
-    path.resolve = jest.fn().mockImplementation((cwd, dir) => {
-      if (dir === '/custom/artifacts/path') {
-        return dir; // Return as is if it's the custom path
-      }
-      return `/resolved/${dir}`; // Otherwise use a standard format
-    });
-
+    // Set up validateAndResolvePath to return a specific path
     const customArtifactsDir = '/custom/artifacts/path';
+    validations.validateAndResolvePath = jest.fn().mockReturnValue(customArtifactsDir);
+    
     await packageCodeArtifacts(customArtifactsDir);
     
-    // When path.isAbsolute returns false, path.resolve is called with process.cwd() and artifactsDir
-    expect(path.resolve).toHaveBeenCalledWith(expect.any(String), customArtifactsDir);
+    // Check that validateAndResolvePath was called with correct arguments
+    expect(validations.validateAndResolvePath).toHaveBeenCalledWith(customArtifactsDir, '/mock/cwd');
     
-    // The actual readdir call should be on the resolved path, not directly on customArtifactsDir
+    // The actual readdir call should be on the resolved path from validateAndResolvePath
     expect(fs.access).toHaveBeenCalledWith(customArtifactsDir);
     expect(fs.readdir).toHaveBeenCalledWith(customArtifactsDir);
   });
@@ -351,11 +348,14 @@ describe('packageCodeArtifacts function', () => {
       return Promise.resolve([]);
     });
     
+    // Mock validateAndResolvePath to return a specific path
     const artifactsDir = '/mock/artifacts';
+    const resolvedPath = '/resolved/path';
+    validations.validateAndResolvePath = jest.fn().mockReturnValue(resolvedPath);
     
     // Since the implementation throws an error for empty directories, we should expect that
     await expect(packageCodeArtifacts(artifactsDir)).rejects.toThrow(
-      `Code artifacts directory '/resolved/${artifactsDir}' is empty, no files to package`
+      `Code artifacts directory '${resolvedPath}' is empty, no files to package`
     );
   });
 
@@ -364,10 +364,59 @@ describe('packageCodeArtifacts function', () => {
     const accessError = new Error('Directory does not exist');
     fs.access.mockRejectedValueOnce(accessError);
     
+    // Mock validateAndResolvePath to return a specific path
     const artifactsDir = '/mock/artifacts';
+    const resolvedPath = '/resolved/path';
+    validations.validateAndResolvePath = jest.fn().mockReturnValue(resolvedPath);
     
     await expect(packageCodeArtifacts(artifactsDir)).rejects.toThrow(
-      `Code artifacts directory '/resolved/${artifactsDir}' does not exist or is not accessible`
+      `Code artifacts directory '${resolvedPath}' does not exist or is not accessible`
     );
+  });
+
+  test('should use validateAndResolvePath to prevent path traversal attacks', async () => {
+    // Setup the mock implementation of validateAndResolvePath
+    validations.validateAndResolvePath = jest.fn().mockReturnValue('/safe/resolved/path');
+    
+    const artifactsDir = './artifacts';
+    await packageCodeArtifacts(artifactsDir);
+    
+    // Check that validateAndResolvePath was called with correct arguments
+    expect(validations.validateAndResolvePath).toHaveBeenCalledWith(artifactsDir, '/mock/cwd');
+    
+    // Check that the resolved path was used for accessing and reading the directory
+    expect(fs.access).toHaveBeenCalledWith('/safe/resolved/path');
+    expect(fs.readdir).toHaveBeenCalledWith('/safe/resolved/path');
+  });
+  
+  test('should throw error when validateAndResolvePath detects path traversal', async () => {
+    // Setup validateAndResolvePath to throw a security error
+    const securityError = new Error('Security error: Path traversal attempt detected');
+    validations.validateAndResolvePath = jest.fn().mockImplementation(() => {
+      throw securityError;
+    });
+    
+    const maliciousPath = '../../../etc/passwd';
+    
+    // Expect the function to reject with the security error
+    await expect(packageCodeArtifacts(maliciousPath)).rejects.toThrow('Security error: Path traversal attempt detected');
+    
+    // Check that validateAndResolvePath was called with the malicious path
+    expect(validations.validateAndResolvePath).toHaveBeenCalledWith(maliciousPath, '/mock/cwd');
+  });
+  
+  test('should handle absolute paths using validateAndResolvePath', async () => {
+    // Setup for absolute path
+    path.isAbsolute = jest.fn().mockReturnValue(true);
+    validations.validateAndResolvePath = jest.fn().mockReturnValue('/absolute/path/artifacts');
+    
+    const absolutePath = '/absolute/path/artifacts';
+    await packageCodeArtifacts(absolutePath);
+    
+    // Check that validateAndResolvePath was called with correct arguments
+    expect(validations.validateAndResolvePath).toHaveBeenCalledWith(absolutePath, '/mock/cwd');
+    
+    // Check that the resolved path was used
+    expect(fs.access).toHaveBeenCalledWith('/absolute/path/artifacts');
   });
 });
