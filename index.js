@@ -44,13 +44,13 @@ async function run() {
     // Creating new Lambda client
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      customUserAgent: customUserAgent,
-      tls: true, 
-      requestHandler: new NodeHttpHandler({
+  customUserAgent: customUserAgent,
+  tls: true, 
+  requestHandler: new NodeHttpHandler({
         httpsAgent: new https.Agent({
           minVersion: 'TLSv1.2',
           maxVersion: 'TLSv1.3',
-          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
+          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384',
           rejectUnauthorized: true, 
           secureOptions: crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1
         })
@@ -112,7 +112,7 @@ async function run() {
       ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
       ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
       ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-      Environment: { Variables: parsedEnvironment },
+      ...(environment && { Environment: parsedEnvironment }),
       ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
       ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
       ...(layers && { Layers: parsedLayers }),
@@ -350,7 +350,7 @@ async function createFunction(client, inputs, functionExists) {
             if (error.stack) {
               core.debug(error.stack);
             }
-            throw error; // Throw to stop the execution flow
+            throw error; 
           }
         } else {
           try {
@@ -371,7 +371,7 @@ async function createFunction(client, inputs, functionExists) {
             if (error.stack) {
               core.debug(error.stack);
             }
-            throw error; // Throw to stop the execution flow
+            throw error; 
           }
         }
 
@@ -389,7 +389,7 @@ async function createFunction(client, inputs, functionExists) {
           ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
           ...(revisionId && { RevisionId: revisionId }),
           ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          Environment: { Variables: parsedEnvironment },
+          ...(environment && { Environment: parsedEnvironment }),
           ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
           ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
           ...(layers && { Layers: parsedLayers }),
@@ -508,7 +508,7 @@ async function updateFunctionConfiguration(client, params) {
       ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
       ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
       ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-      Environment: { Variables: parsedEnvironment },
+      ...(environment && { Environment: parsedEnvironment }),
       ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
       ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
       ...(layers && { Layers: parsedLayers }),
