@@ -1,16 +1,11 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
-const { NodeHttpHandler } = require('@smithy/node-http-handler');
-const { resolveUserAgentConfig } = require('@aws-sdk/middleware-user-agent');
-const { defaultUserAgent } = require('@aws-sdk/util-user-agent-node');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
-const https = require('https');
-const crypto = require('crypto');
 const validations = require('./validations');
-
+const { version } = require('./package.json');
 async function run() {
   try {  
 
@@ -34,16 +29,11 @@ async function run() {
       runtime, handler, architectures
     } = inputs;
 
-    // Get GitHub action info for user agent tracking
-    const actionName = process.env.GITHUB_ACTION || 'LambdaGitHubAction';
-    const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
-    const actionRef = process.env.GITHUB_REF || 'unknown';
+// Set up custom user agent string
+const customUserAgentString = `LambdaGitHubAction/${version}`;
+core.info(`Setting custom user agent: ${customUserAgentString}`);
 
-    // Set up custom user agent string
-    const customUserAgentString = `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`;
-    core.info(`Setting custom user agent: ${customUserAgentString}`);
-
-    // Creating new Lambda client with correct middleware configuration
+    // Creating new Lambda client
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
       customUserAgent: customUserAgentString
@@ -104,7 +94,7 @@ async function run() {
       ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
       ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
       ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-      ...(environment && { Environment: parsedEnvironment }),
+      Environment: { Variables: parsedEnvironment },
       ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
       ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
       ...(layers && { Layers: parsedLayers }),
@@ -381,7 +371,7 @@ async function createFunction(client, inputs, functionExists) {
           ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
           ...(revisionId && { RevisionId: revisionId }),
           ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-          ...(environment && { Environment: parsedEnvironment }),
+          Environment: { Variables: parsedEnvironment },
           ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
           ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
           ...(layers && { Layers: parsedLayers }),
@@ -500,7 +490,7 @@ async function updateFunctionConfiguration(client, params) {
       ...(kmsKeyArn && { KMSKeyArn: kmsKeyArn }),
       ...(ephemeralStorage && { EphemeralStorage: { Size: ephemeralStorage } }),
       ...(vpcConfig && { VpcConfig: parsedVpcConfig }),
-      ...(environment && { Environment: parsedEnvironment }),
+      Environment: { Variables: parsedEnvironment },
       ...(deadLetterConfig && { DeadLetterConfig: parsedDeadLetterConfig }),
       ...(tracingConfig && { TracingConfig: parsedTracingConfig }),
       ...(layers && { Layers: parsedLayers }),
@@ -978,6 +968,10 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
+    const s3Client = new S3Client({ 
+	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+      customUserAgent: `LambdaGitHubAction/${version}`
+	  });
     let bucketExists = false;
     try {
       bucketExists = await checkBucketExists(s3Client, bucketName);
