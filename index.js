@@ -1,8 +1,6 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
-const { resolveUserAgentConfig } = require('@aws-sdk/middleware-user-agent');
-const { defaultUserAgent } = require('@aws-sdk/util-user-agent-node');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -35,24 +33,14 @@ async function run() {
     const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
     const actionRef = process.env.GITHUB_REF || 'unknown';
 
-    // Create user agent configuration using UserAgentResolvedConfig interface
-    const userAgentInputConfig = {
-      customUserAgent: `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`,
-      userAgentAppId: 'LambdaGitHubAction'
-    };
-    
-    // Resolve the user agent configuration
-    const userAgentConfig = resolveUserAgentConfig({
-      ...userAgentInputConfig,
-      defaultUserAgentProvider: defaultUserAgent
-    });
-    
-    core.info(`Setting custom user agent: ${userAgentInputConfig.customUserAgent}`);
-    
-    // Creating new Lambda client with resolved user agent config
+    // Set up custom user agent string
+    const customUserAgentString = `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`;
+    core.info(`Setting custom user agent: ${customUserAgentString}`);
+
+    // Creating new Lambda client with correct middleware configuration
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      ...userAgentConfig
+      customUserAgent: customUserAgentString
     });
       
     // Handling S3 Buckets
