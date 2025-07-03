@@ -2,6 +2,8 @@ const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
 const { NodeHttpHandler } = require('@smithy/node-http-handler');
+const { resolveUserAgentConfig } = require('@aws-sdk/middleware-user-agent');
+const { defaultUserAgent } = require('@aws-sdk/util-user-agent-node');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -37,24 +39,24 @@ async function run() {
     const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
     const actionRef = process.env.GITHUB_REF || 'unknown';
 
-    // Custom user agent string
-    const customUserAgent = `${actionName}/${actionRepo}@${actionRef}`;
-    core.info(`Setting custom user agent: ${customUserAgent}`);
+    // Create user agent configuration using UserAgentResolvedConfig interface
+    const userAgentInputConfig = {
+      customUserAgent: `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`,
+      userAgentAppId: 'LambdaGitHubAction'
+    };
     
-    // Creating new Lambda client
+    // Resolve the user agent configuration
+    const userAgentConfig = resolveUserAgentConfig({
+      ...userAgentInputConfig,
+      defaultUserAgentProvider: defaultUserAgent
+    });
+    
+    core.info(`Setting custom user agent: ${userAgentInputConfig.customUserAgent}`);
+    
+    // Creating new Lambda client with resolved user agent config
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-  customUserAgent: customUserAgent,
-  tls: true, 
-  requestHandler: new NodeHttpHandler({
-        httpsAgent: new https.Agent({
-          minVersion: 'TLSv1.2',
-          maxVersion: 'TLSv1.3',
-          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384',
-          rejectUnauthorized: true, 
-          secureOptions: crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1
-        })
-      })
+      ...userAgentConfig
     });
     
     // Handling S3 Buckets
@@ -986,18 +988,24 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
+    // Create user agent configuration for S3 client
+    const actionName = process.env.GITHUB_ACTION || 'LambdaGitHubAction';
+    const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
+    const actionRef = process.env.GITHUB_REF || 'unknown';
+    
+    const userAgentInputConfig = {
+      customUserAgent: `${actionName}/${actionRepo}@${actionRef}`,
+      userAgentAppId: 'LambdaGitHubAction'
+    };
+    
+    const userAgentConfig = resolveUserAgentConfig({
+      ...userAgentInputConfig,
+      defaultUserAgentProvider: defaultUserAgent
+    });
+    
     const s3Client = new S3Client({ 
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      tls: true, // Explicitly require TLS
-      requestHandler: new NodeHttpHandler({
-        httpsAgent: new https.Agent({
-          minVersion: 'TLSv1.2',
-          maxVersion: 'TLSv1.3',
-          ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384', // Secure cipher suites
-          rejectUnauthorized: true, // Reject unauthorized certificates
-          secureOptions: crypto.constants.SSL_OP_NO_SSLv3 | crypto.constants.SSL_OP_NO_TLSv1 | crypto.constants.SSL_OP_NO_TLSv1_1
-        })
-      })
+      ...userAgentConfig
     });
     let bucketExists = false;
     try {
@@ -1129,3 +1137,4 @@ module.exports = {
   updateFunctionConfiguration,
   updateFunctionCode
 };
+
