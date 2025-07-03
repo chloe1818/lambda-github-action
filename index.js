@@ -39,26 +39,16 @@ async function run() {
     const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
     const actionRef = process.env.GITHUB_REF || 'unknown';
 
-    // Create user agent configuration using UserAgentResolvedConfig interface
-    const userAgentInputConfig = {
-      customUserAgent: `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`,
-      userAgentAppId: 'LambdaGitHubAction'
-    };
-    
-    // Resolve the user agent configuration
-    const userAgentConfig = resolveUserAgentConfig({
-      ...userAgentInputConfig,
-      defaultUserAgentProvider: defaultUserAgent
-    });
-    
-    core.info(`Setting custom user agent: ${userAgentInputConfig.customUserAgent}`);
-    
-    // Creating new Lambda client with resolved user agent config
+    // Set up custom user agent string
+    const customUserAgentString = `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`;
+    core.info(`Setting custom user agent: ${customUserAgentString}`);
+
+    // Creating new Lambda client with correct middleware configuration
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      ...userAgentConfig
+      customUserAgent: customUserAgentString
     });
-    
+      
     // Handling S3 Buckets
     const { s3Bucket, createS3Bucket, useS3Method } = inputs;
     let s3Key = inputs.s3Key;
@@ -988,25 +978,9 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
-    // Create user agent configuration for S3 client
-    const actionName = process.env.GITHUB_ACTION || 'LambdaGitHubAction';
-    const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
-    const actionRef = process.env.GITHUB_REF || 'unknown';
-    
-    const userAgentInputConfig = {
-      customUserAgent: `${actionName}/${actionRepo}@${actionRef}`,
-      userAgentAppId: 'LambdaGitHubAction'
-    };
-    
-    const userAgentConfig = resolveUserAgentConfig({
-      ...userAgentInputConfig,
-      defaultUserAgentProvider: defaultUserAgent
-    });
-    
     const s3Client = new S3Client({ 
-      region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
-      ...userAgentConfig
-    });
+	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+	  });
     let bucketExists = false;
     try {
       bucketExists = await checkBucketExists(s3Client, bucketName);
@@ -1137,4 +1111,3 @@ module.exports = {
   updateFunctionConfiguration,
   updateFunctionCode
 };
-
