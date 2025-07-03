@@ -1,14 +1,9 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
-const { NodeHttpHandler } = require('@smithy/node-http-handler');
-const { resolveUserAgentConfig } = require('@aws-sdk/middleware-user-agent');
-const { defaultUserAgent } = require('@aws-sdk/util-user-agent-node');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
-const https = require('https');
-const crypto = require('crypto');
 const validations = require('./validations');
 
 async function run() {
@@ -301,7 +296,7 @@ async function createFunction(client, inputs, functionExists) {
   const {
     functionName, region, finalZipPath, dryRun, role, s3Bucket, s3Key, 
     sourceKmsKeyArn, runtime, handler, functionDescription, parsedMemorySize,
-    timeout, publish, architectures, ephemeralStorage, revisionId,
+    timeout, publish, architectures, ephemeralStorage, revisionId, environment,
     vpcConfig, parsedEnvironment, deadLetterConfig, tracingConfig,
     layers, fileSystemConfigs, imageConfig, snapStart, loggingConfig, tags,
     kmsKeyArn, codeSigningConfigArn, parsedVpcConfig, parsedDeadLetterConfig,
