@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const validations = require('./validations');
+const { version } = require('./package.json');
 async function run() {
   try {  
 
@@ -28,16 +29,11 @@ async function run() {
       runtime, handler, architectures
     } = inputs;
 
-    // Get GitHub action info for user agent tracking
-    const actionName = process.env.GITHUB_ACTION || 'LambdaGitHubAction';
-    const actionRepo = process.env.GITHUB_REPOSITORY || 'unknown/LambdaGitHubAction';
-    const actionRef = process.env.GITHUB_REF || 'unknown';
-
     // Set up custom user agent string
-    const customUserAgentString = `${actionName}/${actionRepo}@${actionRef} function=${functionName} env=${process.env.ENVIRONMENT || 'unknown'}`;
+    const customUserAgentString = `LambdaGitHubAction/${version}`;
     core.info(`Setting custom user agent: ${customUserAgentString}`);
 
-    // Creating new Lambda client with correct middleware configuration
+    // Creating new Lambda client
     const client = new LambdaClient({
       region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
       customUserAgent: customUserAgentString
@@ -400,7 +396,7 @@ async function createFunction(client, inputs, functionExists) {
         core.info('Lambda function created successfully');
         
         core.info(`Waiting for function ${functionName} to become active before proceeding`);
-        await waitForFunctionActive(client, functionName);
+        //await waitForFunctionActive(client, functionName);
       } catch (error) {
         if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
           core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
@@ -973,7 +969,8 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   
   try {
     const s3Client = new S3Client({ 
-	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+      customUserAgent: `LambdaGitHubAction/${version}`
 	  });
     let bucketExists = false;
     try {
