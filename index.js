@@ -854,11 +854,14 @@ async function createBucket(s3Client, bucketName, region) {
     
     const input = {
       Bucket: bucketName,
-      CreateBucketConfiguration: {
-        LocationConstraint: region
-      }
     };
-    
+
+    if (region !== 'us-east-1') {
+      input.CreateBucketConfiguration = {
+        LocationConstraint: region
+      };
+    }
+
     core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region || 'default'}`);
     const command = new CreateBucketCommand(input);
     
