@@ -1,6 +1,7 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
+const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -16,7 +17,7 @@ async function run() {
     }
 
     const {
-      functionName, region, codeArtifactsDir,
+      functionName, codeArtifactsDir,
       ephemeralStorage, parsedMemorySize, timeout,
       role, codeSigningConfigArn, kmsKeyArn, sourceKmsKeyArn,
       environment, vpcConfig, deadLetterConfig, tracingConfig, 
@@ -29,18 +30,20 @@ async function run() {
       runtime, handler, architectures
     } = inputs;
 
-// Set up custom user agent string
-const customUserAgentString = `LambdaGitHubAction/${version}`;
-core.info(`Setting custom user agent: ${customUserAgentString}`);
+    const region = process.env.AWS_REGION;
+
+    // Set up custom user agent string
+    const customUserAgentString = `LambdaGitHubAction/${version}`;
+    core.info(`Setting custom user agent: ${customUserAgentString}`);
 
     // Creating new Lambda client
     const client = new LambdaClient({
-      region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+      region,
       customUserAgent: customUserAgentString
     });
       
     // Handling S3 Buckets
-    const { s3Bucket, createS3Bucket, useS3Method } = inputs;
+    const { s3Bucket, useS3Method } = inputs;
     let s3Key = inputs.s3Key;
     if (s3Bucket && !s3Key) {
       s3Key = generateS3Key(functionName);
@@ -583,9 +586,7 @@ async function updateFunctionCode(client, params) {
     
     if (useS3Method) {
       core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
-      
-      // Intentionally not wrapping this in a try-catch to ensure errors propagate properly
-      // This is key to making the test pass
+
       await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
       core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
       
@@ -815,7 +816,9 @@ function generateS3Key(functionName) {
 
 async function checkBucketExists(s3Client, bucketName) {
   try {
-    const command = new HeadBucketCommand({ Bucket: bucketName });
+    const command = new HeadBucketCommand({ 
+      Bucket: bucketName
+    });
     await s3Client.send(command);
     core.info(`S3 bucket ${bucketName} exists`);
     return true;
@@ -852,17 +855,17 @@ async function createBucket(s3Client, bucketName, region) {
       throw new Error(`Invalid bucket name: "${bucketName}". Bucket names must be 3-63 characters, lowercase, start/end with a letter/number, and contain only letters, numbers, dots, and hyphens.`);
     }
     
-    const resolvedRegion = region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
     const input = {
       Bucket: bucketName,
-      ...(resolvedRegion !== 'us-east-1' && { 
-        CreateBucketConfiguration: { 
-          LocationConstraint: resolvedRegion 
-        }
-      })
     };
-    
-    core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region}`);
+
+    if (region !== 'us-east-1') {
+      input.CreateBucketConfiguration = {
+        LocationConstraint: region
+      };
+    }
+
+    core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region || 'default'}`);
     const command = new CreateBucketCommand(input);
     
     try {
@@ -969,7 +972,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   
   try {
     const s3Client = new S3Client({ 
-	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+	    region,
       customUserAgent: `LambdaGitHubAction/${version}`
 	  });
     let bucketExists = false;
@@ -1024,10 +1027,18 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
     core.info(`Read deployment package, size: ${fileContent.length} bytes`);
     
     try {
+
+      expectedBucketOwner = await getAwsAccountId(region);
+
+      if(!expectedBucketOwner) {
+        throw new Error("No AWS account ID found.");
+      }
+
       const input = {
         Bucket: bucketName,
         Key: s3Key,
-        Body: fileContent
+        Body: fileContent,
+        ExpectedBucketOwner: expectedBucketOwner
       };
       
       core.info(`Sending PutObject request to S3 (bucket: ${bucketName}, key: ${s3Key})`);
@@ -1079,6 +1090,24 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   }
 }
 
+// Helper function for retrieving AWS account ID
+async function getAwsAccountId(region) {
+  try {
+    const stsClient = new STSClient({ 
+      region,
+      customUserAgent: `LambdaGitHubAction/${version}`
+    });
+    const command = new GetCallerIdentityCommand({});
+    const response = await stsClient.send(command);
+    core.info(`Successfully retrieved AWS account ID: ${response.Account}`);
+    return response.Account;
+  } catch (error) {
+    core.warning(`Failed to retrieve AWS account ID: ${error.message}`);
+    core.debug(error.stack);
+    return null;
+  }
+}
+
 if (require.main === module) {
   run();
 }
@@ -1100,5 +1129,6 @@ module.exports = {
   validateBucketName,
   createFunction,
   updateFunctionConfiguration,
-  updateFunctionCode
+  updateFunctionCode,
+  getAwsAccountId
 };

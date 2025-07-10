@@ -23,9 +23,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole
-          aws-region: us-east-1
-      
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole      
       - name: Deploy Lambda function
         uses: aws-actions/amazon-lambda-deploy@v1
         with:
@@ -55,7 +53,6 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole
-          aws-region: us-east-1
       
       - name: Deploy Lambda function via S3
         uses: aws-actions/amazon-lambda-deploy@v1
@@ -87,9 +84,7 @@ jobs:
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole
-          aws-region: us-east-1
-      
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole      
       - name: Update Lambda configuration
         uses: aws-actions/amazon-lambda-deploy@v1
         with:
@@ -121,9 +116,7 @@ jobs:
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole
-          aws-region: us-east-1
-      
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole      
       - name: Validate Lambda deployment (no changes)
         uses: aws-actions/amazon-lambda-deploy@v1
         with:
@@ -137,7 +130,6 @@ jobs:
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `function-name` | Name of the Lambda function | Yes | |
-| `region` | AWS region | No | (from AWS config) |
 | `code-artifacts-dir` | Path to a directory of code artifacts to zip and deploy | Yes | |
 | `s3-bucket` | S3 bucket name for Lambda deployment package. Uses S3 deployment method if provided | No | |
 | `s3-key` | S3 key (path) for the Lambda deployment package | No | Auto-generated |
@@ -197,7 +189,6 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole
-          aws-region: us-east-1
       
       - name: Deploy Lambda function
         uses: aws-actions/amazon-lambda-deploy@v1

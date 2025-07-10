@@ -47,21 +47,11 @@ function validateRequiredInputs() {
     return { valid: false };
   }
 
-  // For tests, we'll allow undefined handler/runtime to pass validation
-  // In production, these are still required
   let handler = core.getInput('handler', { required: true });
-  if (!handler && process.env.NODE_ENV !== 'test') {
-    core.setFailed('Handler must be provided');
-    return { valid: false };
-  }
-  handler = handler || 'index.handler'; // Default for tests
+  handler = handler || 'index.handler'; 
   
   let runtime = core.getInput('runtime', { required: true });
-  if (!runtime && process.env.NODE_ENV !== 'test') {
-    core.setFailed('Runtime must be provided');
-    return { valid: false };
-  }
-  runtime = runtime || 'nodejs18.x'; // Default for tests
+  runtime = runtime || 'node20js.x'; 
 
   return { 
     valid: true, 
@@ -222,37 +212,27 @@ function getAdditionalInputs() {
   const functionDescription = core.getInput('function-description', { required: false });
   const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
   let publish = false;
-  const region = core.getInput('region', { required: false });
   const revisionId = core.getInput('revision-id', { required: false });
   const architectures = core.getInput('architectures', { required: false });
   const s3Bucket = core.getInput('s3-bucket', { required: false });
   let s3Key = core.getInput('s3-key', { required: false });
-  
+
   try {
     publish = core.getBooleanInput('publish', { required: false });
   } catch (error) {
     publish = false;
   }
-  
-  let createS3Bucket = true;
-  try {
-    createS3Bucket = core.getBooleanInput('create-s3-bucket', { required: false });
-  } catch (error) {
-    createS3Bucket = true; 
-  }
-  
+
   const useS3Method = !!s3Bucket;
 
   return {
     functionDescription,
     dryRun,
     publish,
-    region,
     revisionId,
     architectures,
     s3Bucket,
     s3Key,
-    createS3Bucket,
     useS3Method
   };
 }

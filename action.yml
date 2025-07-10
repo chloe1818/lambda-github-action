@@ -10,12 +10,11 @@ inputs:
   handler:
     description: 'The name of the method within your code that Lambda calls to run your function. Required for .zip file'
     required: true
+    default: 'index.handler'
   runtime:
     description: 'The identifier of the runtime. Required for .zip file'
     required: true
-  region:
-    description: 'AWS region. If no region is provided, the default is us-east-1.'
-    required: false
+    default: 'nodejs20.x'
   s3-bucket:
     description: 'S3 bucket name to use for Lambda deployment package. If provided, S3 deployment method will be used instead of direct upload.'
     required: false
