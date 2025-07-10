@@ -16,7 +16,7 @@ async function run() {
     }
 
     const {
-      functionName, region, codeArtifactsDir,
+      functionName, codeArtifactsDir,
       ephemeralStorage, parsedMemorySize, timeout,
       role, codeSigningConfigArn, kmsKeyArn, sourceKmsKeyArn,
       environment, vpcConfig, deadLetterConfig, tracingConfig, 
@@ -29,13 +29,15 @@ async function run() {
       runtime, handler, architectures
     } = inputs;
 
+    const region = process.env.AWS_REGION;
+
     // Set up custom user agent string
     const customUserAgentString = `LambdaGitHubAction/${version}`;
     core.info(`Setting custom user agent: ${customUserAgentString}`);
 
     // Creating new Lambda client
     const client = new LambdaClient({
-      region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+      region,
       customUserAgent: customUserAgentString
     });
       
@@ -583,9 +585,7 @@ async function updateFunctionCode(client, params) {
     
     if (useS3Method) {
       core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
-      
-      // Intentionally not wrapping this in a try-catch to ensure errors propagate properly
-      // This is key to making the test pass
+
       await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
       core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
       
@@ -852,17 +852,14 @@ async function createBucket(s3Client, bucketName, region) {
       throw new Error(`Invalid bucket name: "${bucketName}". Bucket names must be 3-63 characters, lowercase, start/end with a letter/number, and contain only letters, numbers, dots, and hyphens.`);
     }
     
-    const resolvedRegion = region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
     const input = {
       Bucket: bucketName,
-      ...(resolvedRegion !== 'us-east-1' && { 
-        CreateBucketConfiguration: { 
-          LocationConstraint: resolvedRegion 
-        }
-      })
+      CreateBucketConfiguration: {
+        LocationConstraint: region
+      }
     };
     
-    core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region}`);
+    core.info(`Sending CreateBucket request for bucket: ${bucketName} in region: ${region || 'default'}`);
     const command = new CreateBucketCommand(input);
     
     try {
@@ -969,7 +966,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   
   try {
     const s3Client = new S3Client({ 
-	    region: region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
+	    region,
       customUserAgent: `LambdaGitHubAction/${version}`
 	  });
     let bucketExists = false;
