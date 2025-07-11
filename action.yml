@@ -14,15 +14,12 @@ inputs:
   runtime:
     description: 'The identifier of the runtime. Required for .zip file'
     required: true
-    default: 'node20js.x'
+    default: 'nodejs20.x'
   s3-bucket:
     description: 'S3 bucket name to use for Lambda deployment package. If provided, S3 deployment method will be used instead of direct upload.'
     required: false
   s3-key:
     description: 'S3 key for the Lambda deployment package in the bucket. If not provided, a key will be auto-generated using the format: lambda-deployments/{function-name}/{timestamp}-{commit-hash}.zip.'
-    required: false
-  expected-bucket-owner:
-    description: 'The AWS account ID of the expected bucket owner. REQUIRED for S3 bucket operations'
     required: false
   publish:
     description: 'Set to true to publish a new version of the function after updating the code.'
