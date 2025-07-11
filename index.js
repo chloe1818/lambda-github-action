@@ -1063,7 +1063,12 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       })}`);
       
       if (uploadError.$metadata?.httpStatusCode === 403) {
-        throw new Error('Access denied when uploading to S3. Ensure your IAM policy includes s3:PutObject permission.');
+        // Check for bucket owner mismatch error
+        if (uploadError.message && (uploadError.message.includes('ExpectedBucketOwner') || uploadError.message.includes('bucket owner') || uploadError.message.includes('owner mismatch'))) {
+          throw new Error(`Access denied: The expected bucket owner (${expectedBucketOwner}) does not match the actual bucket owner. Ensure you're using a bucket from your AWS account or update your IAM permissions.`);
+        } else {
+          throw new Error('Access denied when uploading to S3. Ensure your IAM policy includes s3:PutObject permission.');
+        }
       }
       throw uploadError;
     }
