@@ -1,6 +1,7 @@
 const core = require('@actions/core');
 const { LambdaClient, CreateFunctionCommand, GetFunctionConfigurationCommand, UpdateFunctionConfigurationCommand, UpdateFunctionCodeCommand, waitUntilFunctionUpdated } = require('@aws-sdk/client-lambda');
 const { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand, PutBucketEncryptionCommand, PutPublicAccessBlockCommand, PutBucketVersioningCommand} = require('@aws-sdk/client-s3');
+const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
 const fs = require('fs/promises'); 
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -42,7 +43,7 @@ async function run() {
     });
       
     // Handling S3 Buckets
-    const { s3Bucket, useS3Method, expectedBucketOwner } = inputs;
+    const { s3Bucket, useS3Method } = inputs;
     let s3Key = inputs.s3Key;
     if (s3Bucket && !s3Key) {
       s3Key = generateS3Key(functionName);
@@ -78,7 +79,7 @@ async function run() {
       snapStart, loggingConfig, tags, kmsKeyArn, codeSigningConfigArn,
       parsedVpcConfig, parsedDeadLetterConfig, parsedTracingConfig,
       parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
-      parsedSnapStart, parsedLoggingConfig, parsedTags, expectedBucketOwner
+      parsedSnapStart, parsedLoggingConfig, parsedTags
     }, functionExists);
 
     // Update function configuration
@@ -157,8 +158,7 @@ async function run() {
       revisionId,
       sourceKmsKeyArn,
       dryRun,
-      region,
-      expectedBucketOwner
+      region
     });
 
     core.info('Lambda function deployment completed successfully');
@@ -299,7 +299,7 @@ async function createFunction(client, inputs, functionExists) {
     layers, fileSystemConfigs, imageConfig, snapStart, loggingConfig, tags,
     kmsKeyArn, codeSigningConfigArn, parsedVpcConfig, parsedDeadLetterConfig,
     parsedTracingConfig, parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
-    parsedSnapStart, parsedLoggingConfig, parsedTags, expectedBucketOwner
+    parsedSnapStart, parsedLoggingConfig, parsedTags
   } = inputs;
   
   if (!functionExists) {
@@ -322,7 +322,7 @@ async function createFunction(client, inputs, functionExists) {
 
         if (s3Bucket) {
           try {
-            await uploadToS3(finalZipPath, s3Bucket, s3Key, region, expectedBucketOwner);
+            await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
             core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
             
             codeParameter = {
@@ -568,7 +568,7 @@ async function updateFunctionCode(client, params) {
   const {
     functionName, finalZipPath, useS3Method, s3Bucket, s3Key,
     codeArtifactsDir, architectures, publish, revisionId,
-    sourceKmsKeyArn, dryRun, region, expectedBucketOwner
+    sourceKmsKeyArn, dryRun, region
   } = params;
 
   core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
@@ -587,7 +587,7 @@ async function updateFunctionCode(client, params) {
     if (useS3Method) {
       core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
 
-      await uploadToS3(finalZipPath, s3Bucket, s3Key, region, expectedBucketOwner);
+      await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
       core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
       
       codeInput = {
@@ -814,7 +814,7 @@ function generateS3Key(functionName) {
   return `lambda-deployments/${functionName}/${timestamp}${commitHash}.zip`;
 }
 
-async function checkBucketExists(s3Client, bucketName, expectedBucketOwner) {
+async function checkBucketExists(s3Client, bucketName) {
   try {
     const command = new HeadBucketCommand({ 
       Bucket: bucketName
@@ -847,7 +847,7 @@ async function checkBucketExists(s3Client, bucketName, expectedBucketOwner) {
   }
 }
 
-async function createBucket(s3Client, bucketName, region, expectedBucketOwner) {
+async function createBucket(s3Client, bucketName, region) {
   core.info(`Creating S3 bucket: ${bucketName}`);
   
   try {
@@ -967,7 +967,7 @@ function validateBucketName(name) {
   return true;
 }
 
-async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucketOwner) {
+async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
@@ -977,7 +977,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucket
 	  });
     let bucketExists = false;
     try {
-      bucketExists = await checkBucketExists(s3Client, bucketName, expectedBucketOwner);
+      bucketExists = await checkBucketExists(s3Client, bucketName);
     } catch (checkError) {
       core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
       core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
@@ -992,7 +992,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucket
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
-        await createBucket(s3Client, bucketName, region, expectedBucketOwner);
+        await createBucket(s3Client, bucketName, region);
         core.info(`Bucket ${bucketName} created successfully.`);
       } catch (bucketError) {
         core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
@@ -1027,6 +1027,8 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucket
     core.info(`Read deployment package, size: ${fileContent.length} bytes`);
     
     try {
+
+      expectedBucketOwner = await getAwsAccountId(region);
 
       if(!expectedBucketOwner) {
         throw new Error("No expected bucket owner specified. Add expected-bucket-owner to workflow.");
@@ -1088,6 +1090,24 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucket
   }
 }
 
+// Helper function for retrieving AWS account ID
+async function getAwsAccountId(region) {
+  try {
+    const stsClient = new STSClient({ 
+      region,
+      customUserAgent: `LambdaGitHubAction/${version}`
+    });
+    const command = new GetCallerIdentityCommand({});
+    const response = await stsClient.send(command);
+    core.info(`Successfully retrieved AWS account ID: ${response.Account}`);
+    return response.Account;
+  } catch (error) {
+    core.warning(`Failed to retrieve AWS account ID: ${error.message}`);
+    core.debug(error.stack);
+    return null;
+  }
+}
+
 if (require.main === module) {
   run();
 }
@@ -1109,5 +1129,6 @@ module.exports = {
   validateBucketName,
   createFunction,
   updateFunctionConfiguration,
-  updateFunctionCode
+  updateFunctionCode,
+  getAwsAccountId
 };
