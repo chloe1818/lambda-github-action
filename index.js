@@ -42,7 +42,7 @@ async function run() {
     });
       
     // Handling S3 Buckets
-    const { s3Bucket, createS3Bucket, useS3Method } = inputs;
+    const { s3Bucket, useS3Method, expectedBucketOwner } = inputs;
     let s3Key = inputs.s3Key;
     if (s3Bucket && !s3Key) {
       s3Key = generateS3Key(functionName);
@@ -78,7 +78,7 @@ async function run() {
       snapStart, loggingConfig, tags, kmsKeyArn, codeSigningConfigArn,
       parsedVpcConfig, parsedDeadLetterConfig, parsedTracingConfig,
       parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
-      parsedSnapStart, parsedLoggingConfig, parsedTags
+      parsedSnapStart, parsedLoggingConfig, parsedTags, expectedBucketOwner
     }, functionExists);
 
     // Update function configuration
@@ -157,7 +157,8 @@ async function run() {
       revisionId,
       sourceKmsKeyArn,
       dryRun,
-      region
+      region,
+      expectedBucketOwner
     });
 
     core.info('Lambda function deployment completed successfully');
@@ -298,7 +299,7 @@ async function createFunction(client, inputs, functionExists) {
     layers, fileSystemConfigs, imageConfig, snapStart, loggingConfig, tags,
     kmsKeyArn, codeSigningConfigArn, parsedVpcConfig, parsedDeadLetterConfig,
     parsedTracingConfig, parsedLayers, parsedFileSystemConfigs, parsedImageConfig,
-    parsedSnapStart, parsedLoggingConfig, parsedTags
+    parsedSnapStart, parsedLoggingConfig, parsedTags, expectedBucketOwner
   } = inputs;
   
   if (!functionExists) {
@@ -321,7 +322,7 @@ async function createFunction(client, inputs, functionExists) {
 
         if (s3Bucket) {
           try {
-            await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
+            await uploadToS3(finalZipPath, s3Bucket, s3Key, region, expectedBucketOwner);
             core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
             
             codeParameter = {
@@ -567,7 +568,7 @@ async function updateFunctionCode(client, params) {
   const {
     functionName, finalZipPath, useS3Method, s3Bucket, s3Key,
     codeArtifactsDir, architectures, publish, revisionId,
-    sourceKmsKeyArn, dryRun, region
+    sourceKmsKeyArn, dryRun, region, expectedBucketOwner
   } = params;
 
   core.info(`Updating function code for ${functionName} with ${finalZipPath}`);
@@ -586,7 +587,7 @@ async function updateFunctionCode(client, params) {
     if (useS3Method) {
       core.info(`Using S3 deployment method with bucket: ${s3Bucket}, key: ${s3Key}`);
 
-      await uploadToS3(finalZipPath, s3Bucket, s3Key, region);
+      await uploadToS3(finalZipPath, s3Bucket, s3Key, region, expectedBucketOwner);
       core.info(`Successfully uploaded package to S3: s3://${s3Bucket}/${s3Key}`);
       
       codeInput = {
@@ -813,9 +814,12 @@ function generateS3Key(functionName) {
   return `lambda-deployments/${functionName}/${timestamp}${commitHash}.zip`;
 }
 
-async function checkBucketExists(s3Client, bucketName) {
+async function checkBucketExists(s3Client, bucketName, expectedBucketOwner) {
   try {
-    const command = new HeadBucketCommand({ Bucket: bucketName });
+    const command = new HeadBucketCommand({ 
+      Bucket: bucketName,
+      ExpectedBucketOwner: expectedBucketOwner
+    });
     await s3Client.send(command);
     core.info(`S3 bucket ${bucketName} exists`);
     return true;
@@ -844,7 +848,7 @@ async function checkBucketExists(s3Client, bucketName) {
   }
 }
 
-async function createBucket(s3Client, bucketName, region) {
+async function createBucket(s3Client, bucketName, region, expectedBucketOwner) {
   core.info(`Creating S3 bucket: ${bucketName}`);
   
   try {
@@ -880,7 +884,8 @@ async function createBucket(s3Client, bucketName, region) {
             IgnorePublicAcls: true,
             BlockPublicPolicy: true,
             RestrictPublicBuckets: true
-          }
+          },
+          ExpectedBucketOwner: expectedBucketOwner
         }));
         
         core.info(`Enabling default encryption for bucket: ${bucketName}`);
@@ -895,7 +900,8 @@ async function createBucket(s3Client, bucketName, region) {
                 BucketKeyEnabled: true
               }
             ]
-          }
+          },
+          ExpectedBucketOwner: expectedBucketOwner
         }));
         
         core.info(`Enabling versioning for bucket: ${bucketName}`);
@@ -903,7 +909,8 @@ async function createBucket(s3Client, bucketName, region) {
           Bucket: bucketName,
           VersioningConfiguration: {
             Status: 'Enabled'
-          }
+          },
+          ExpectedBucketOwner: expectedBucketOwner
         }));
         
         core.info(`Security configurations successfully applied to bucket: ${bucketName}`);
@@ -964,7 +971,7 @@ function validateBucketName(name) {
   return true;
 }
 
-async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
+async function uploadToS3(zipFilePath, bucketName, s3Key, region, expectedBucketOwner) {
   core.info(`Uploading Lambda deployment package to S3: s3://${bucketName}/${s3Key}`);
   
   try {
@@ -974,7 +981,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
 	  });
     let bucketExists = false;
     try {
-      bucketExists = await checkBucketExists(s3Client, bucketName);
+      bucketExists = await checkBucketExists(s3Client, bucketName, expectedBucketOwner);
     } catch (checkError) {
       core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
       core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
@@ -989,7 +996,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
-        await createBucket(s3Client, bucketName, region);
+        await createBucket(s3Client, bucketName, region, expectedBucketOwner);
         core.info(`Bucket ${bucketName} created successfully.`);
       } catch (bucketError) {
         core.error(`Failed to create bucket ${bucketName}: ${bucketError.message}`);
@@ -1024,10 +1031,16 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
     core.info(`Read deployment package, size: ${fileContent.length} bytes`);
     
     try {
+
+      if(!expectedBucketOwner) {
+        throw new Error("No expected bucket owner specified. Add expected-bucket-owner to workflow.");
+      }
+
       const input = {
         Bucket: bucketName,
         Key: s3Key,
-        Body: fileContent
+        Body: fileContent,
+        ExpectedBucketOwner: expectedBucketOwner
       };
       
       core.info(`Sending PutObject request to S3 (bucket: ${bucketName}, key: ${s3Key})`);
