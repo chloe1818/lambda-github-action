@@ -399,7 +399,7 @@ async function createFunction(client, inputs, functionExists) {
         core.info('Lambda function created successfully');
         
         core.info(`Waiting for function ${functionName} to become active before proceeding`);
-        //await waitForFunctionActive(client, functionName);
+        await waitForFunctionActive(client, functionName);
       } catch (error) {
         if (error.name === 'ThrottlingException' || error.name === 'TooManyRequestsException' || error.$metadata?.httpStatusCode === 429) {
           core.setFailed(`Rate limit exceeded and maximum retries reached: ${error.message}`);
