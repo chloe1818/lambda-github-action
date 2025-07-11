@@ -1,352 +1,1259 @@
 const core = require('@actions/core');
-const path = require('path');
+const { validateAndResolvePath } = require('../validations');
+const originalValidations = jest.requireActual('../validations');
 
-function validateNumericInputs() {
-  const ephemeralStorageInput = core.getInput('ephemeral-storage', { required: false });
-  const ephemeralStorage = parseInt(ephemeralStorageInput);
-  if (ephemeralStorageInput && isNaN(ephemeralStorage)) {
-    core.setFailed(`Ephemeral storage must be a number, got: ${ephemeralStorageInput}`);
-    return { valid: false };
-  }
-
-  const memorySize = core.getInput('memory-size', { required: false });
-  let parsedMemorySize;
-  if (memorySize !== '') {
-    parsedMemorySize = parseInt(memorySize);
-    if (isNaN(parsedMemorySize)) {
-      core.setFailed(`Memory size must be a number, got: ${memorySize}`);
-      return { valid: false };
-    }
-  }
-
-  const timeoutInput = core.getInput('timeout', { required: false });
-  const timeout = parseInt(timeoutInput);
-  if (timeoutInput && isNaN(timeout)) {
-    core.setFailed(`Timeout must be a number, got: ${timeoutInput}`);
-    return { valid: false };
-  }
-
-  return { 
-    valid: true, 
-    ephemeralStorage, 
-    parsedMemorySize, 
-    timeout 
-  };
-}
-
-function validateRequiredInputs() {
-  const functionName = core.getInput('function-name', { required: true });
-  if (!functionName) {
-    core.setFailed('Function name must be provided');
-    return { valid: false };
-  }
-
-  const codeArtifactsDir = core.getInput('code-artifacts-dir');
-  if (!codeArtifactsDir) {
-    core.setFailed('Code-artifacts-dir must be provided');
-    return { valid: false };
-  }
-
-  let handler = core.getInput('handler', { required: true });
-  handler = handler || 'index.handler'; 
-  
-  let runtime = core.getInput('runtime', { required: true });
-  runtime = runtime || 'node20js.x'; 
-
-  return { 
-    valid: true, 
-    functionName, 
-    codeArtifactsDir,
-    handler,
-    runtime
-  };
-}
-
-function validateArnInputs() {
-  const role = core.getInput('role', { required: false });
-  const codeSigningConfigArn = core.getInput('code-signing-config-arn', { required: false });
-  const kmsKeyArn = core.getInput('kms-key-arn', { required: false });
-  const sourceKmsKeyArn = core.getInput('source-kms-key-arn', { required: false });
-  
-  if (role && !validateRoleArn(role)) {
-    return { valid: false };
-  }
-  
-  if (codeSigningConfigArn && !validateCodeSigningConfigArn(codeSigningConfigArn)) {
-    return { valid: false };
-  }
-  
-  if (kmsKeyArn && !validateKmsKeyArn(kmsKeyArn)) {
-    return { valid: false };
-  }
-  
-  if (sourceKmsKeyArn && !validateKmsKeyArn(sourceKmsKeyArn)) {
-    return { valid: false };
-  }
-
+jest.mock('@actions/core');
+jest.mock('../validations', () => {
   return {
-    valid: true,
-    role,
-    codeSigningConfigArn,
-    kmsKeyArn,
-    sourceKmsKeyArn
+    
+    ...jest.requireActual('../validations'),
+    
+    validateAllInputs: jest.fn()
   };
-}
+});
 
-function validateJsonInputs() {
-  const environment = core.getInput('environment', { required: false });
-  const vpcConfig = core.getInput('vpc-config', { required: false });
-  const deadLetterConfig = core.getInput('dead-letter-config', { required: false });
-  const tracingConfig = core.getInput('tracing-config', { required: false });
-  const layers = core.getInput('layers', { required: false });
-  const fileSystemConfigs = core.getInput('file-system-configs', { required: false });
-  const imageConfig = core.getInput('image-config', { required: false });
-  const snapStart = core.getInput('snap-start', { required: false });
-  const loggingConfig = core.getInput('logging-config', { required: false });
-  const tags = core.getInput('tags', { required: false });
-  
-  let parsedEnvironment, parsedVpcConfig, parsedDeadLetterConfig, parsedTracingConfig,
-    parsedLayers, parsedFileSystemConfigs, parsedImageConfig, parsedSnapStart,
-    parsedLoggingConfig, parsedTags;
-
-  try {
-    if (environment) {
-      parsedEnvironment = parseJsonInput(environment, 'environment');
-    }
-    
-    if (vpcConfig) {
-      parsedVpcConfig = parseJsonInput(vpcConfig, 'vpc-config');
-      if (!parsedVpcConfig.SubnetIds || !Array.isArray(parsedVpcConfig.SubnetIds)) {
-        throw new Error("vpc-config must include 'SubnetIds' as an array");
-      }
-      if (!parsedVpcConfig.SecurityGroupIds || !Array.isArray(parsedVpcConfig.SecurityGroupIds)) {
-        throw new Error("vpc-config must include 'SecurityGroupIds' as an array");
-      }
-    }
-    
-    if (deadLetterConfig) {
-      parsedDeadLetterConfig = parseJsonInput(deadLetterConfig, 'dead-letter-config');
-      if (!parsedDeadLetterConfig.TargetArn) {
-        throw new Error("dead-letter-config must include 'TargetArn'");
-      }
-    }
-    
-    if (tracingConfig) {
-      parsedTracingConfig = parseJsonInput(tracingConfig, 'tracing-config');
-      if (!parsedTracingConfig.Mode || !['Active', 'PassThrough'].includes(parsedTracingConfig.Mode)) {
-        throw new Error("tracing-config Mode must be 'Active' or 'PassThrough'");
-      }
-    }
-    
-    if (layers) {
-      parsedLayers = parseJsonInput(layers, 'layers');
-      if (!Array.isArray(parsedLayers)) {
-        throw new Error("layers must be an array of layer ARNs");
-      }
-    }
-    
-    if (fileSystemConfigs) {
-      parsedFileSystemConfigs = parseJsonInput(fileSystemConfigs, 'file-system-configs');
-      if (!Array.isArray(parsedFileSystemConfigs)) {
-        throw new Error("file-system-configs must be an array");
-      }
-      for (const config of parsedFileSystemConfigs) {
-        if (!config.Arn || !config.LocalMountPath) {
-          throw new Error("Each file-system-config must include 'Arn' and 'LocalMountPath'");
+describe('Validations Tests', () => {
+  describe('Numeric Input Validation Tests', () => {
+    describe('Memory Size Validation', () => {
+      it('should accept valid memory sizes', () => {
+        
+        const validSizes = ['128', '256', '512', '1024', '10240'];
+        for (const size of validSizes) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((name) => {
+            if (name === 'memory-size') return size;
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.parsedMemorySize).toBe(parseInt(size));
+          expect(core.setFailed).not.toHaveBeenCalled();
         }
-      }
-    }
-    
-    if (imageConfig) {
-      parsedImageConfig = parseJsonInput(imageConfig, 'image-config');
-    }
-    
-    if (snapStart) {
-      parsedSnapStart = parseJsonInput(snapStart, 'snap-start');
-      if (!parsedSnapStart.ApplyOn || !['PublishedVersions', 'None'].includes(parsedSnapStart.ApplyOn)) {
-        throw new Error("snap-start ApplyOn must be 'PublishedVersions' or 'None'");
-      }
-    }
-    
-    if (loggingConfig) {
-      parsedLoggingConfig = parseJsonInput(loggingConfig, 'logging-config');
-    }
-    
-    if (tags) {
-      parsedTags = parseJsonInput(tags, 'tags');
-      if (typeof parsedTags !== 'object' || Array.isArray(parsedTags)) {
-        throw new Error("tags must be an object of key-value pairs");
-      }
-    }
-  } catch (error) {
-    core.setFailed(`Input validation error: ${error.message}`);
-    return { valid: false };
-  }
+      });
+      it('should handle empty memory size input', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((name) => {
+            if (name === 'memory-size') return '';
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedMemorySize).toBeUndefined();
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      it('should handle non-numeric memory size input', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((name) => {
+            if (name === 'memory-size') return 'hello';
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith('Memory size must be a number, got: hello');
+      });
+    });
+    describe('Timeout Validation', () => {
+      it('should accept valid timeout values', () => {
+        
+        const validTimeouts = ['1', '30', '300', '900'];
+        for (const timeout of validTimeouts) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((name) => {
+            if (name === 'timeout') return timeout;
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.timeout).toBe(parseInt(timeout));
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('should handle non-numeric memory size input', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((name) => {
+            if (name === 'timeout') return 'hello';
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+            return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith('Timeout must be a number, got: hello');
+      });
+    });
+    describe('Ephemeral Storage Validation', () => {
+      it('should accept valid ephemeral storage values', () => {
+        
+        const validStorageValues = ['512', '1024', '2048', '10240'];
+        for (const storage of validStorageValues) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((name) => {
+            if (name === 'ephemeral-storage') return storage;
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.ephemeralStorage).toBe(parseInt(storage));
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('should handle non-numeric memory size input', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((name) => {
+            if (name === 'ephemeral-storage') return 'hello';
+            if (name === 'function-name') return 'test-function';
+            if (name === 'region') return 'us-east-1';
+            if (name === 'code-artifacts-dir') return './artifacts';
+            if (name === 'handler') return 'index.handler';
+            if (name === 'runtime') return 'nodejs18.x';
+            return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith('Ephemeral storage must be a number, got: hello');
+      });
+    });
+  });
+  describe('Required Input Validation Tests', () => {
+    describe('Function Name Validation', () => {
+      it('should accept valid function names', () => {
+        const validNames = ['my-function', 'my_function', 'my.function', 'my-function-123'];
+        for (const name of validNames) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((inputName) => {
+            if (inputName === 'function-name') return name;
+            if (inputName === 'region') return 'us-east-1';
+            if (inputName === 'code-artifacts-dir') return './artifacts';
+            if (inputName === 'handler') return 'index.handler';
+            if (inputName === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.functionName).toBe(name);
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('should reject empty function names', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((inputName) => {
+          if (inputName === 'function-name') return '';
+          if (inputName === 'region') return 'us-east-1';
+          if (inputName === 'code-artifacts-dir') return './artifacts';
+          if (inputName === 'handler') return 'index.handler';
+          if (inputName === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith('Function name must be provided');
+      });
+    });
+    describe('Code Artifacts Directory Validation', () => {
+      it('should accept valid code artifacts directories', () => {
+        const validDirs = ['./artifacts', '../artifacts', '/home/user/artifacts'];
+        for (const dir of validDirs) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((inputName) => {
+            if (inputName === 'function-name') return 'test-function';
+            if (inputName === 'region') return 'us-east-1';
+            if (inputName === 'code-artifacts-dir') return dir;
+            if (inputName === 'handler') return 'index.handler';
+            if (inputName === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.codeArtifactsDir).toBe(dir);
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('should reject empty code artifacts directories', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((inputName) => {
+          if (inputName === 'function-name') return 'test-function';
+          if (inputName === 'region') return 'us-east-1';
+          if (inputName === 'code-artifacts-dir') return '';
+          if (inputName === 'handler') return 'index.handler';
+          if (inputName === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith('Code-artifacts-dir must be provided');
+      });
+    });
+    describe('Handler Validation', () => {
+      it('should accept valid handlers', () => {
+        const validHandlers = ['index.handler', 'my-function.handler', 'my.function.handler'];
+        for (const handler of validHandlers) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((inputName) => {
+            if (inputName === 'function-name') return 'test-function';
+            if (inputName === 'region') return 'us-east-1';
+            if (inputName === 'code-artifacts-dir') return './artifacts';
+            if (inputName === 'handler') return handler;
+            if (inputName === 'runtime') return 'nodejs18.x';
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.handler).toBe(handler);
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('default to index.handler', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((inputName) => {
+          if (inputName === 'function-name') return 'test-function';
+          if (inputName === 'region') return 'us-east-1';
+          if (inputName === 'code-artifacts-dir') return './artifacts';
+          if (inputName === 'handler') return '';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.handler).toBe('index.handler');
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+    });
+    describe('Runtime Validation', () => {
+      it('should accept valid runtimes', () => {
+        const validRuntimes = ['nodejs18.x', 'nodejs16.x', 'nodejs14.x', 'nodejs12.x'];
+        for (const runtime of validRuntimes) {
+          jest.clearAllMocks();
+          core.getInput.mockImplementation((inputName) => {
+            if (inputName === 'function-name') return 'test-function';
+            if (inputName === 'region') return 'us-east-1';
+            if (inputName === 'code-artifacts-dir') return './artifacts';
+            if (inputName === 'handler') return 'index.handler';
+            if (inputName === 'runtime') return runtime;
+            return '';
+          });
+          const result = originalValidations.validateAllInputs();
+          expect(result.valid).toBe(true);
+          expect(result.runtime).toBe(runtime);
+          expect(core.setFailed).not.toHaveBeenCalled();
+        }
+      });
+      it('default to 20js.x', () => {
+        jest.clearAllMocks();
+        core.getInput.mockImplementation((inputName) => {
+          if (inputName === 'function-name') return 'test-function';
+          if (inputName === 'region') return 'us-east-1';
+          if (inputName === 'code-artifacts-dir') return './artifacts';
+          if (inputName === 'handler') return 'index.handler';
+          if (inputName === 'runtime') return '';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.runtime).toBe('node20js.x');
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+    });
+  });
+  describe('ARN Input Validation Tests', () => {
+    describe('Role ARN Validation', () => {
+      it('should validate role ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'role') return 'arn:aws:iam::123456789012:role/test-role';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should reject invalid role ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'role') return 'invalid:arn:format';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid IAM role ARN format')
+        );
+      });
+    });
+    describe('Code Signing Config ARN Validation Test', () => {
+      it('should validate code signing config ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'code-signing-config-arn') return 'arn:aws:lambda:us-east-1:123456789012:code-signing-config:abc123';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should reject invalid code signing config ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'code-signing-config-arn') return 'invalid:code:signing:arn';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid code signing config ARN format')
+        );
+      });
+    });
+    describe('KMS Key ARN Validation', () => {
+      it('should validate KMS key ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'kms-key-arn') return 'arn:aws:kms:us-east-1:123456789012:key/abcdef12-3456-7890-abcd-ef1234567890';
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should reject invalid source KMS key ARN format', () => {
+        core.getInput.mockImplementation((name) => {
+          if (name === 'kms-key-arn') return 'invalid:kms:key:arn';
+          if (name === 'source-kms-key-arn') return 'invalid:kms:key:arn'
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid KMS key ARN format')
+        );
+      });
+    });
+  });
+  describe('JSON Input Validations', () => {
+    beforeEach(() => {
+      jest.resetAllMocks();
+      core.getInput = jest.fn();
+      core.getBooleanInput = jest.fn();
+      core.setFailed = jest.fn();
+      core.getInput.mockImplementation((name) => {
+        const inputs = {
+          'function-name': 'test-function',
+          'region': 'us-east-1',
+          'code-artifacts-dir': './src',
+          'handler': 'index.handler', 
+          'runtime': 'nodejs18.x'     
+        };
+        return inputs[name] || '';
+      });
+    });
+    describe('Environment validation', () => {
+      test('should accept valid environment variables', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'environment') {
+            return '{"ENV":"prod","DEBUG":"true","API_URL":"https://api.example.com"}'
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './src',
+            'handler': 'index.handler',
+            'runtime': 'nodejs18.x'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedEnvironment).toEqual({
+          ENV: 'prod', 
+          DEBUG: 'true', 
+          API_URL: 'https://api.example.com'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject invalid JSON in environment', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'environment') {
+            return '{"ENV":"prod", DEBUG:"true"}'; 
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './src',
+            'handler': 'index.handler',
+            'runtime': 'nodejs18.x'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Input validation error'));
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Invalid JSON in environment'));
+      });
+    });
+    describe('vpc-config validation', () => {
+      test('should accept valid vpc configuration', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'vpc-config') {
+            return '{"SubnetIds":["subnet-123","subnet-456"],"SecurityGroupIds":["sg-123"]}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './src',
+            'handler': 'index.handler',
+            'runtime': 'nodejs18.x'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedVpcConfig).toEqual({
+          SubnetIds: ['subnet-123', 'subnet-456'],
+          SecurityGroupIds: ['sg-123']
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject vpc-config missing SubnetIds', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'vpc-config') {
+            return '{"SecurityGroupIds":["sg-123"]}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './src'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('vpc-config must include \'SubnetIds\''));
+      });
+      test('should reject vpc-config with non-array SubnetIds', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'vpc-config') {
+            return '{"SubnetIds": "subnet-123", "SecurityGroupIds":["sg-123"]}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './src'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('vpc-config must include \'SubnetIds\' as an array'));
+      });
+      test('should reject vpc-config missing SecurityGroupIds', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'vpc-config') {
+            return '{"SubnetIds":["subnet-123","subnet-456"]}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir',
+            'handler': 'index.handler',
+            'runtime': 'nodejs18.x'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('vpc-config must include \'SecurityGroupIds\''));
+      });
+      test('should reject vpc-config with non-array SecurityGroupIds', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'vpc-config') {
+            return '{"SubnetIds":["subnet-123","subnet-456"],"SecurityGroupIds":"sg-123"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('vpc-config must include \'SecurityGroupIds\' as an array'));
+      });
+    });
+    describe('dead-letter-config validation', () => {
+      test('should accept valid dead letter configuration', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'dead-letter-config') {
+            return '{"TargetArn":"arn:aws:sns:us-east-1:123456789012:my-topic"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedDeadLetterConfig).toEqual({
+          TargetArn: 'arn:aws:sns:us-east-1:123456789012:my-topic'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject dead-letter-config missing TargetArn', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'dead-letter-config') {
+            return '{"SomeOtherProperty":"value"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('dead-letter-config must include \'TargetArn\''));
+      });
+    });
+    describe('tracing-config validation', () => {
+      test('should accept valid tracing configuration with Active mode', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tracing-config') {
+            return '{"Mode":"Active"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedTracingConfig).toEqual({
+          Mode: 'Active'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should accept valid tracing configuration with PassThrough mode', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tracing-config') {
+            return '{"Mode":"PassThrough"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedTracingConfig).toEqual({
+          Mode: 'PassThrough'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject tracing-config with invalid Mode', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tracing-config') {
+            return '{"Mode":"InvalidMode"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('tracing-config Mode must be \'Active\' or \'PassThrough\''));
+      });
+      test('should reject tracing-config missing Mode', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tracing-config') {
+            return '{"SomeOtherProperty":"value"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('tracing-config Mode must be \'Active\' or \'PassThrough\''));
+      });
+    });
+    describe('layers validation', () => {
+      test('should accept valid layers array', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'layers') {
+            return '["arn:aws:lambda:us-east-1:123456789012:layer:layer1:1","arn:aws:lambda:us-east-1:123456789012:layer:layer2:2"]';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedLayers).toEqual([
+          'arn:aws:lambda:us-east-1:123456789012:layer:layer1:1',
+          'arn:aws:lambda:us-east-1:123456789012:layer:layer2:2'
+        ]);
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject layers as non-array', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'layers') {
+            return '{"layer":"arn:aws:lambda:us-east-1:123456789012:layer:layer1:1"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('layers must be an array of layer ARNs'));
+      });
+    });
+    describe('file-system-configs validation', () => {
+      test('should accept valid file system configs array', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'file-system-configs') {
+            return '[{"Arn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123","LocalMountPath":"/mnt/efs"}]';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedFileSystemConfigs).toEqual([
+          {
+            Arn: 'arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123',
+            LocalMountPath: '/mnt/efs'
+          }
+        ]);
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject file-system-configs as non-array', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'file-system-configs') {
+            return '{"Arn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123","LocalMountPath":"/mnt/efs"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'        };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('file-system-configs must be an array'));
+      });
+      test('should reject file-system-configs missing Arn', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'file-system-configs') {
+            return '[{"LocalMountPath":"/mnt/efs"}]';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Each file-system-config must include \'Arn\' and \'LocalMountPath\''));
+      });
+      test('should reject file-system-configs missing LocalMountPath', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'file-system-configs') {
+            return '[{"Arn":"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-123"}]';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Each file-system-config must include \'Arn\' and \'LocalMountPath\''));
+      });
+    });
+    describe('snap-start validation', () => {
+      test('should accept valid snap-start with PublishedVersions', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'snap-start') {
+            return '{"ApplyOn":"PublishedVersions"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedSnapStart).toEqual({
+          ApplyOn: 'PublishedVersions'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should accept valid snap-start with None', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'snap-start') {
+            return '{"ApplyOn":"None"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedSnapStart).toEqual({
+          ApplyOn: 'None'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject snap-start with invalid ApplyOn', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'snap-start') {
+            return '{"ApplyOn":"Invalid"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('snap-start ApplyOn must be \'PublishedVersions\' or \'None\''));
+      });
+      test('should reject snap-start missing ApplyOn', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'snap-start') {
+            return '{"SomeOtherProperty":"value"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('snap-start ApplyOn must be \'PublishedVersions\' or \'None\''));
+      });
+    });
+    describe('tags validation', () => {
+      test('should accept valid tags object', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tags') {
+            return '{"Environment":"Production","Team":"DevOps","Project":"Lambda-Action"}';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+        expect(result.parsedTags).toEqual({
+          Environment: 'Production',
+          Team: 'DevOps',
+          Project: 'Lambda-Action'
+        });
+        expect(core.setFailed).not.toHaveBeenCalled();
+      });
+      test('should reject tags as array', () => {
+        const mockGetInput = jest.fn((name) => {
+          if (name === 'tags') {
+            return '["tag1", "tag2"]';
+          }
+          const inputs = {
+            'function-name': 'test-function',
+            'region': 'us-east-1',
+            'code-artifacts-dir': './test-dir'
+          };
+          return inputs[name] || '';
+        });
+        core.getInput = mockGetInput;
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('tags must be an object of key-value pairs'));
+      });
+    });
+    describe('VPC Configuration Edge Cases', () => {
+      it('should reject vpc-config with malformed SubnetIds', () => {
+        const invalidVpcConfig = JSON.stringify({
+          SubnetIds: "subnet-123", 
+          SecurityGroupIds: ['sg-123']
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'vpc-config') return invalidVpcConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("vpc-config must include 'SubnetIds' as an array")
+        );
+      });
+      it('should reject vpc-config with empty SecurityGroupIds array', () => {
+        const validVpcConfig = JSON.stringify({
+          SubnetIds: ['subnet-123'],
+          SecurityGroupIds: []
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'vpc-config') return validVpcConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+    });
+    describe('Dead Letter Config Validation', () => {
+      it('should validate SQS ARN in dead-letter-config', () => {
+        const validDLQConfig = JSON.stringify({
+          TargetArn: 'arn:aws:sqs:us-east-1:123456789012:my-queue'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'dead-letter-config') return validDLQConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should validate SNS ARN in dead-letter-config', () => {
+        const validDLQConfig = JSON.stringify({
+          TargetArn: 'arn:aws:sns:us-east-1:123456789012:my-topic'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'dead-letter-config') return validDLQConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+    });
+    describe('Invalid JSON Handling', () => {
+      it('should handle invalid JSON format in vpc-config', () => {
+        const invalidJson = '{ this is not valid JSON }';
+        core.getInput.mockImplementation((name) => {
+          if (name === 'vpc-config') return invalidJson;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid JSON in vpc-config')
+        );
+      });
+      it('should handle invalid JSON format in environment', () => {
+        const invalidJson = '{ ENV: production }';
+        core.getInput.mockImplementation((name) => {
+          if (name === 'environment') return invalidJson;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          if (name === 'handler') return 'index.handler';
+          if (name === 'runtime') return 'nodejs18.x';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining('Invalid JSON in environment')
+        );
+      });
+    });
+    describe('Tracing Config Validation', () => {
+      it('should reject invalid tracing mode values', () => {
+        const invalidTracingConfig = JSON.stringify({
+          Mode: 'Detailed' 
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'tracing-config') return invalidTracingConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("tracing-config Mode must be 'Active' or 'PassThrough'")
+        );
+      });
+    });
+    describe('SnapStart Config Validation', () => {
+      it('should validate PublishedVersions for snap-start', () => {
+        const validSnapStart = JSON.stringify({
+          ApplyOn: 'PublishedVersions'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'snap-start') return validSnapStart;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should validate None for snap-start', () => {
+        const validSnapStart = JSON.stringify({
+          ApplyOn: 'None'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'snap-start') return validSnapStart;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should reject invalid ApplyOn values', () => {
+        const invalidSnapStart = JSON.stringify({
+          ApplyOn: 'AllVersions' 
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'snap-start') return invalidSnapStart;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("snap-start ApplyOn must be 'PublishedVersions' or 'None'")
+        );
+      });
+    });
+    describe('File System Configs Validation', () => {
+      it('should reject non-array file-system-configs', () => {
+        const invalidFSConfig = JSON.stringify({
+          Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-12345',
+          LocalMountPath: '/mnt/efs'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'file-system-configs') return invalidFSConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("file-system-configs must be an array")
+        );
+      });
+      it('should reject file-system-configs with missing Arn', () => {
+        const invalidFSConfig = JSON.stringify([
+          {
+            LocalMountPath: '/mnt/efs'
+          }
+        ]);
+        core.getInput.mockImplementation((name) => {
+          if (name === 'file-system-configs') return invalidFSConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("Each file-system-config must include 'Arn' and 'LocalMountPath'")
+        );
+      });
+      it('should validate multiple file system configs', () => {
+        const validFSConfig = JSON.stringify([
+          {
+            Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-12345',
+            LocalMountPath: '/mnt/efs1'
+          },
+          {
+            Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-67890',
+            LocalMountPath: '/mnt/efs2'
+          }
+        ]);
+        core.getInput.mockImplementation((name) => {
+          if (name === 'file-system-configs') return validFSConfig;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+    });
+    describe('Tags Validation', () => {
+      it('should validate complex tag objects', () => {
+        const validTags = JSON.stringify({
+          Environment: 'Production',
+          Project: 'Lambda-Action',
+          Team: 'DevOps',
+          Cost: 'Center123',
+          'Complex Key': 'Value with spaces'
+        });
+        core.getInput.mockImplementation((name) => {
+          if (name === 'tags') return validTags;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(true);
+      });
+      it('should reject tag arrays', () => {
+        const invalidTags = JSON.stringify([
+          { key: 'Environment', value: 'Production' }
+        ]);
+        core.getInput.mockImplementation((name) => {
+          if (name === 'tags') return invalidTags;
+          if (name === 'function-name') return 'test-function';
+          if (name === 'region') return 'us-east-1';
+          if (name === 'code-artifacts-dir') return './artifacts';
+          return '';
+        });
+        const result = originalValidations.validateAllInputs();
+        expect(result.valid).toBe(false);
+        expect(core.setFailed).toHaveBeenCalledWith(
+          expect.stringContaining("tags must be an object of key-value pairs")
+        );
+      });
+    });
+  });
+  describe('validateAndResolvePath function', () => {
+    let originalPlatform;
+    beforeAll(() => {
+      originalPlatform = process.platform;
+    });
+    afterAll(() => {
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform
+      });
+    });
+    beforeEach(() => {
+      process.cwd = jest.fn().mockReturnValue('/mock/cwd');
+    });
+    test('should resolve relative paths correctly', () => {
+      const basePath = '/base/path';
+      const relativePath = './subdir/file.js';
+      const result = validateAndResolvePath(relativePath, basePath);
+      expect(result).toBe('/base/path/subdir/file.js');
+    });
+    test('should allow absolute paths that are inside base path', () => {
+      const basePath = '/base/path';
+      const absolutePath = '/base/path/subdir/file.js';
+      const result = validateAndResolvePath(absolutePath, basePath);
+      expect(result).toBe('/base/path/subdir/file.js');
+    });
+    test('should handle paths with no traversal correctly', () => {
+      const basePath = '/base/path';
+      const safePath = 'subdir/file.js';
+      const result = validateAndResolvePath(safePath, basePath);
+      expect(result).toBe('/base/path/subdir/file.js');
+    });
+    test('should throw error for path traversal with ../', () => {
+      const basePath = '/base/path';
+      const maliciousPath = '../outside/file.js';
+      expect(() => {
+        validateAndResolvePath(maliciousPath, basePath);
+      }).toThrow(/Security error: Path traversal attempt detected/);
+    });
+    test('should throw error for path traversal with multiple ../', () => {
+      const basePath = '/base/path';
+      const maliciousPath = 'subdir/../../outside/file.js';
+      expect(() => {
+        validateAndResolvePath(maliciousPath, basePath);
+      }).toThrow(/Security error: Path traversal attempt detected/);
+    });
+    test('should throw error for absolute paths outside base path', () => {
+      const basePath = '/base/path';
+      const maliciousPath = '/outside/path/file.js';
+      expect(() => {
+        validateAndResolvePath(maliciousPath, basePath);
+      }).toThrow(/Security error: Path traversal attempt detected/);
+    });
+    test('should normalize paths with redundant separators', () => {
+      const basePath = '/base/path';
+      const messyPath = 'subdir///nested//file.js';
+      const result = validateAndResolvePath(messyPath, basePath);
+      expect(result).toBe('/base/path/subdir/nested/file.js');
+    });
+    test('should handle absolute paths inside base path', () => {
+      const basePath = '/base/path';
+      let result = validateAndResolvePath(basePath, basePath);
+      expect(result).toBe('/base/path');
+      result = validateAndResolvePath(`${basePath}/subdir`, basePath);
+      expect(result).toBe('/base/path/subdir');
+    });
+    test('should handle empty paths', () => {
+      const basePath = '/base/path';
+      const emptyPath = '';
+      const result = validateAndResolvePath(emptyPath, basePath);
+      expect(result).toBe('/base/path');
+    });
+    test('should handle current directory path', () => {
+      const basePath = '/base/path';
+      const currentDirPath = '.';
+      const result = validateAndResolvePath(currentDirPath, basePath);
+      expect(result).toBe('/base/path');
+    });
+    test('should handle special characters in paths', () => {
+      const basePath = '/base/path';
+      const specialCharsPath = 'subdir/file with spaces and $special#chars.js';
+      const result = validateAndResolvePath(specialCharsPath, basePath);
+      expect(result).toBe('/base/path/subdir/file with spaces and $special#chars.js');
+    });
+    test('should handle edge case where path resolves to base directory', () => {
+      const basePath = '/base/path';
+      const edgeCasePaths = [
+        'subdir/..',
+        'subdir/nested/../..',
+        'subdir/./nested/../../',
+        './subdir/../'
+      ];
+      edgeCasePaths.forEach(edgeCasePath => {
+        const result = validateAndResolvePath(edgeCasePath, basePath);
+        expect(result).toBe('/base/path');
+      });
+    });
+    test('should handle paths with dot directory references', () => {
+      const basePath = '/base/path';
+      const pathWithDots = 'subdir/./nested/./file.js';
+      const result = validateAndResolvePath(pathWithDots, basePath);
+      expect(result).toBe('/base/path/subdir/nested/file.js');
+    });
+    test('should handle complex absolute paths correctly', () => {
+      const basePath = '/base/path';
+      const absolutePath = '/base/path/./subdir/../file.js';
+      expect(() => {
+        validateAndResolvePath(absolutePath, basePath);
+      }).not.toThrow();
+      const result = validateAndResolvePath(absolutePath, basePath);
+      expect(result).toBe('/base/path/file.js');
+    });
+  });
+});
 
-  return {
-    valid: true,
-    environment,
-    vpcConfig,
-    deadLetterConfig,
-    tracingConfig,
-    layers,
-    fileSystemConfigs, 
-    imageConfig,
-    snapStart,
-    loggingConfig,
-    tags,
-    parsedEnvironment,
-    parsedVpcConfig,
-    parsedDeadLetterConfig,
-    parsedTracingConfig,
-    parsedLayers,
-    parsedFileSystemConfigs,
-    parsedImageConfig, 
-    parsedSnapStart,
-    parsedLoggingConfig,
-    parsedTags
-  };
-}
-
-function getAdditionalInputs() {
-  const functionDescription = core.getInput('function-description', { required: false });
-  const dryRun = core.getBooleanInput('dry-run', { required: false }) || false;
-  let publish = false;
-  const revisionId = core.getInput('revision-id', { required: false });
-  const architectures = core.getInput('architectures', { required: false });
-  const s3Bucket = core.getInput('s3-bucket', { required: false });
-  let s3Key = core.getInput('s3-key', { required: false });
-  const expectedBucketOwner = core.getInput('expected-bucket-owner', { required: false });
-
-  if (expectedBucketOwner && !validateAccountId(expectedBucketOwner)) {
-    return { valid: false };
-  }
-
-  try {
-    publish = core.getBooleanInput('publish', { required: false });
-  } catch (error) {
-    publish = false;
-  }
-
-  const useS3Method = !!s3Bucket;
-
-  return {
-    functionDescription,
-    dryRun,
-    publish,
-    revisionId,
-    architectures,
-    s3Bucket,
-    s3Key,
-    useS3Method,
-    expectedBucketOwner
-  };
-}
-
-function parseJsonInput(jsonString, inputName) {
-  try {
-    return JSON.parse(jsonString);
-  } catch (error) {
-    throw new Error(`Invalid JSON in ${inputName} input: ${error.message}`);
-  }
-}
-
-function validateRoleArn(arn) {
-  const rolePattern = /^arn:aws(-[a-z0-9-]+)?:iam::[0-9]{12}:role\/[a-zA-Z0-9+=,.@_\/-]+$/;
-  
-  if (!rolePattern.test(arn)) {
-    core.setFailed(`Invalid IAM role ARN format: ${arn}`);
-    return false;
-  }
-  return true;
-}
-
-function validateCodeSigningConfigArn(arn) {
-  const cscPattern = /^arn:aws(-[a-z0-9-]+)?:lambda:[a-z0-9-]+:[0-9]{12}:code-signing-config:[a-zA-Z0-9-]+$/;
-
-  if (!cscPattern.test(arn)) {
-    core.setFailed(`Invalid code signing config ARN format: ${arn}`);
-    return false;
-  }
-  return true;
-}
-
-function validateKmsKeyArn(arn) {
-  const kmsPattern = /^arn:aws(-[a-z0-9-]+)?:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-zA-Z0-9-]+$/;
-  
-  if (!kmsPattern.test(arn)) {
-    core.setFailed(`Invalid KMS key ARN format: ${arn}`);
-    return false;
-  }
-  return true;
-}
-
-function validateAndResolvePath(userPath, basePath) {
-  const normalizedPath = path.normalize(userPath);
-  const resolvedPath = path.isAbsolute(normalizedPath) ? normalizedPath : path.resolve(basePath, normalizedPath);
-  const relativePath = path.relative(basePath, resolvedPath);
-
-  if (relativePath && (relativePath.startsWith('..') || path.isAbsolute(relativePath))) {
-    throw new Error(
-      `Security error: Path traversal attempt detected. ` +
-      `The path '${userPath}' resolves to '${resolvedPath}' which is outside the allowed directory '${basePath}'.`
-    );
-  }
-  return resolvedPath;
-}
-
-function validateAllInputs() {
-  const requiredInputs = validateRequiredInputs();
-  if (!requiredInputs.valid) {
-    return { valid: false };
-  }
-  
-  const numericInputs = validateNumericInputs();
-  if (!numericInputs.valid) {
-    return { valid: false };
-  }
-  
-  const arnInputs = validateArnInputs();
-  if (!arnInputs.valid) {
-    return { valid: false };
-  }
-  
-  const jsonInputs = validateJsonInputs();
-  if (!jsonInputs.valid) {
-    return { valid: false };
-  }
-  
-  const additionalInputs = getAdditionalInputs();
-  
-  return {
-    valid: true,
-    ...requiredInputs,
-    ...numericInputs,
-    ...arnInputs,
-    ...jsonInputs,
-    ...additionalInputs
-  };
-}
-
-function validateAccountId(accountId) {
-  if (!accountId) return true;
-  
-  const accountIdPattern = /^\d{12}$/;
-  if (!accountIdPattern.test(accountId)) {
-    core.setFailed(`Invalid AWS account ID format: ${accountId}. Should be 12 digits.`);
-    return false;
-  }
-  return true;
-}
-
-
-module.exports = {
-  validateAllInputs,
-  parseJsonInput,
-  validateRoleArn,
-  validateCodeSigningConfigArn,
-  validateKmsKeyArn,
-  validateAndResolvePath,
-  getAdditionalInputs,
-  validateAccountId
-};
