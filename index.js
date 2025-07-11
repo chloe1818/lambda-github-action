@@ -975,20 +975,20 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
 	    region,
       customUserAgent: `LambdaGitHubAction/${version}`
 	  });
-    // let bucketExists = false;
-    // try {
-    //   bucketExists = await checkBucketExists(s3Client, bucketName);
-    // } catch (checkError) {
-    //   core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
-    //   core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
+    let bucketExists = false;
+    try {
+      bucketExists = await checkBucketExists(s3Client, bucketName);
+    } catch (checkError) {
+      core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
+      core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
       
-    //   if (checkError.$metadata?.httpStatusCode === 403) {
-    //     throw new Error(`Access denied to S3 bucket`);
-    //   } else {
-    //     throw checkError;
-    //   }
-    // }
-    let bucketExists = true;
+      if (checkError.$metadata?.httpStatusCode === 403) {
+        throw new Error(`Access denied to S3 bucket`);
+      } else {
+        throw checkError;
+      }
+    }
+    
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
@@ -1031,7 +1031,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       expectedBucketOwner = await getAwsAccountId(region);
 
       if(!expectedBucketOwner) {
-        throw new Error("No expected bucket owner specified. Add expected-bucket-owner to workflow.");
+        throw new Error("No AWS account ID found.");
       }
 
       const input = {
@@ -1063,12 +1063,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
       })}`);
       
       if (uploadError.$metadata?.httpStatusCode === 403) {
-        // Check for bucket owner mismatch error
-        if (uploadError.message && (uploadError.message.includes('ExpectedBucketOwner') || uploadError.message.includes('bucket owner') || uploadError.message.includes('owner mismatch'))) {
-          throw new Error(`Access denied: The expected bucket owner (${expectedBucketOwner}) does not match the actual bucket owner. Ensure you're using a bucket from your AWS account or update your IAM permissions.`);
-        } else {
-          throw new Error('Access denied when uploading to S3. Ensure your IAM policy includes s3:PutObject permission.');
-        }
+        throw new Error('Access denied when uploading to S3. Ensure your IAM policy includes s3:PutObject permission.');
       }
       throw uploadError;
     }
