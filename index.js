@@ -817,8 +817,7 @@ function generateS3Key(functionName) {
 async function checkBucketExists(s3Client, bucketName, expectedBucketOwner) {
   try {
     const command = new HeadBucketCommand({ 
-      Bucket: bucketName,
-      ExpectedBucketOwner: expectedBucketOwner
+      Bucket: bucketName
     });
     await s3Client.send(command);
     core.info(`S3 bucket ${bucketName} exists`);
@@ -884,8 +883,7 @@ async function createBucket(s3Client, bucketName, region, expectedBucketOwner) {
             IgnorePublicAcls: true,
             BlockPublicPolicy: true,
             RestrictPublicBuckets: true
-          },
-          ExpectedBucketOwner: expectedBucketOwner
+          }
         }));
         
         core.info(`Enabling default encryption for bucket: ${bucketName}`);
@@ -900,8 +898,7 @@ async function createBucket(s3Client, bucketName, region, expectedBucketOwner) {
                 BucketKeyEnabled: true
               }
             ]
-          },
-          ExpectedBucketOwner: expectedBucketOwner
+          }
         }));
         
         core.info(`Enabling versioning for bucket: ${bucketName}`);
@@ -909,8 +906,7 @@ async function createBucket(s3Client, bucketName, region, expectedBucketOwner) {
           Bucket: bucketName,
           VersioningConfiguration: {
             Status: 'Enabled'
-          },
-          ExpectedBucketOwner: expectedBucketOwner
+          }
         }));
         
         core.info(`Security configurations successfully applied to bucket: ${bucketName}`);
