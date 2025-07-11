@@ -988,7 +988,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
         throw checkError;
       }
     }
-    
+    bucketExists = true;
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
