@@ -1038,7 +1038,7 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
         Bucket: bucketName,
         Key: s3Key,
         Body: fileContent,
-        ExpectedBucketOwner: expectedBucketOwner
+        // ExpectedBucketOwner: expectedBucketOwner
       };
       
       core.info(`Sending PutObject request to S3 (bucket: ${bucketName}, key: ${s3Key})`);
