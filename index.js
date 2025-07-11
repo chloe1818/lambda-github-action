@@ -975,20 +975,20 @@ async function uploadToS3(zipFilePath, bucketName, s3Key, region) {
 	    region,
       customUserAgent: `LambdaGitHubAction/${version}`
 	  });
-    let bucketExists = false;
-    try {
-      bucketExists = await checkBucketExists(s3Client, bucketName);
-    } catch (checkError) {
-      core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
-      core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
+    // let bucketExists = false;
+    // try {
+    //   bucketExists = await checkBucketExists(s3Client, bucketName);
+    // } catch (checkError) {
+    //   core.error(`Failed to check if bucket exists: ${checkError.name} - ${checkError.message}`);
+    //   core.error(`Error type: ${checkError.name}, Code: ${checkError.code}`);
       
-      if (checkError.$metadata?.httpStatusCode === 403) {
-        throw new Error(`Access denied to S3 bucket`);
-      } else {
-        throw checkError;
-      }
-    }
-    bucketExists = true;
+    //   if (checkError.$metadata?.httpStatusCode === 403) {
+    //     throw new Error(`Access denied to S3 bucket`);
+    //   } else {
+    //     throw checkError;
+    //   }
+    // }
+    let bucketExists = true;
     if (!bucketExists) {
       core.info(`Bucket ${bucketName} does not exist. Attempting to create it...`);
       try {
