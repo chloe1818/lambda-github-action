@@ -1,29 +1,22 @@
-// Make sure Jest mocks are defined before any imports
 jest.mock('@actions/core');
 jest.mock('@aws-sdk/client-lambda');
-
-// Mock the waitForFunctionUpdated function in index.js
 jest.mock('../index', () => {
   const actualModule = jest.requireActual('../index');
   const originalRun = actualModule.run;
   
   return {
     ...actualModule,
-    // Create a mock for run that calls specific behaviors for each test
     run: jest.fn().mockImplementation(async () => {
-      // This will be overridden in each test
       const fs = require('fs/promises');
       const AdmZip = require('adm-zip');
       const { glob } = require('glob');
       const core = require('@actions/core');
       
-      // Create a mock implementation that simulates the basic flow without timeout
       await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
       await glob('**/*', { cwd: '/mock/artifacts', dot: true });
       const zip = new AdmZip();
       zip.addLocalFolder('/mock/cwd/lambda-package');
       
-      // Log success
       core.info('Packaging code artifacts from /mock/artifacts');
       core.info('Lambda function deployment completed successfully');
     }),
@@ -36,8 +29,6 @@ jest.mock('../index', () => {
     waitForFunctionUpdated: jest.fn().mockResolvedValue(undefined)
   };
 });
-
-// Mock fs/promises
 jest.mock('fs/promises', () => ({
   mkdir: jest.fn().mockResolvedValue(undefined),
   stat: jest.fn().mockImplementation(async (path) => ({
@@ -46,23 +37,17 @@ jest.mock('fs/promises', () => ({
   copyFile: jest.fn().mockResolvedValue(undefined),
   readFile: jest.fn().mockResolvedValue(Buffer.from('mock file content'))
 }));
-
-// Create manual mocks for modules that may not be installed
 jest.mock('glob', () => ({
   glob: jest.fn().mockResolvedValue(['file1.js', 'directory/file2.js', 'directory'])
 }));
-
-// Manual mock for AdmZip
 jest.mock('adm-zip', () => 
   jest.fn().mockImplementation(() => ({
     addLocalFolder: jest.fn(),
     writeZip: jest.fn()
   }))
 );
-
 jest.mock('path');
 
-// Now we can import modules
 const core = require('@actions/core');
 const { LambdaClient } = require('@aws-sdk/client-lambda');
 const fs = require('fs/promises');
@@ -71,21 +56,15 @@ const { glob } = require('glob');
 const AdmZip = require('adm-zip');
 const mainModule = require('../index');
 
-// Increase the default timeout for all tests in this file
-jest.setTimeout(15000);
-
-describe('Lambda Deployment Integration Tests', () => {
+describe('Code Artifacts Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Mock process.cwd()
     process.cwd = jest.fn().mockReturnValue('/mock/cwd');
     
-    // Mock path.join to return predictable paths
     path.join.mockImplementation((...parts) => parts.join('/'));
     path.dirname.mockImplementation((p) => p.substring(0, p.lastIndexOf('/')));
     
-    // Mock core functions
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
@@ -101,7 +80,6 @@ describe('Lambda Deployment Integration Tests', () => {
     core.error.mockImplementation(() => {});
     core.setFailed.mockImplementation(() => {});
     
-    // Mock Lambda client
     const mockLambdaResponse = {
       $metadata: { httpStatusCode: 200 },
       Configuration: {
@@ -116,9 +94,7 @@ describe('Lambda Deployment Integration Tests', () => {
   });
   
   it('should package artifacts and deploy to Lambda', async () => {
-    // Set up the run mock for this specific test
     mainModule.run.mockImplementationOnce(async () => {
-      // This simulates what the test expects to happen
       await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
       const files = await glob('**/*', { cwd: '/mock/artifacts', dot: true });
       const zip = new AdmZip();
@@ -126,33 +102,26 @@ describe('Lambda Deployment Integration Tests', () => {
       core.info('Packaging code artifacts from /mock/artifacts');
     });
     
-    // Call the main function
     await mainModule.run();
     
-    // Verify temporary directory was created
-    expect(fs.mkdir).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true });
     
-    // Verify glob was called to find files
+    expect(fs.mkdir).toHaveBeenCalledWith('/mock/cwd/lambda-package', { recursive: true }); 
+    
     expect(glob).toHaveBeenCalledWith('**/*', { cwd: '/mock/artifacts', dot: true });
-    
-    // Verify ZIP creation
+
     expect(AdmZip).toHaveBeenCalled();
     const zipInstance = AdmZip.mock.results[0].value;
     expect(zipInstance.addLocalFolder).toHaveBeenCalledWith('/mock/cwd/lambda-package');
     
-    // Verify appropriate logs were shown
-    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Packaging code artifacts'));
-    
-    // Verify no errors were reported
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Packaging code artifacts')); 
     expect(core.setFailed).not.toHaveBeenCalled();
   });
   
   it('should handle artifacts packaging failure gracefully', async () => {
-    // Make file operations throw an error
+    
     const packageError = new Error('Failed to create package');
     fs.mkdir.mockRejectedValueOnce(packageError);
     
-    // Set up the run mock for this specific test
     mainModule.run.mockImplementationOnce(async () => {
       try {
         await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
@@ -161,15 +130,13 @@ describe('Lambda Deployment Integration Tests', () => {
       }
     });
     
-    // Call the main function
-    await mainModule.run();
     
-    // Verify error was logged
+    await mainModule.run();
     expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Action failed with error'));
   });
   
   it('should correctly use code-artifacts-dir when provided', async () => {
-    // Update the mock with a different artifacts directory
+    
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
@@ -178,28 +145,21 @@ describe('Lambda Deployment Integration Tests', () => {
         'role': 'arn:aws:iam::123456789012:role/lambda-role',
       };
       return inputs[name] || '';
-    });
+    }); 
     
-    // Set up the run mock for this specific test
-    mainModule.run.mockImplementationOnce(async () => {
-      // In this test, we expect fs.mkdir and glob not to be called
-      // Just do some final output to simulate success
+    mainModule.run.mockImplementationOnce(async () => {  
       core.info('Lambda function deployment completed successfully');
     });
     
-    // Call the main function
-    await mainModule.run();
+    await mainModule.run(); 
     
-    // Verify packaging functions were not called
     expect(fs.mkdir).not.toHaveBeenCalled();
     expect(glob).not.toHaveBeenCalled();
-    
-    // Verify no errors were reported
     expect(core.setFailed).not.toHaveBeenCalled();
   });
   
   it('should fail when code-artifacts-dir is missing', async () => {
-    // Change the mock to return without code-artifacts-dir
+    
     core.getInput.mockImplementation((name) => {
       const inputs = {
         'function-name': 'test-function',
@@ -208,8 +168,7 @@ describe('Lambda Deployment Integration Tests', () => {
       };
       return inputs[name] || '';
     });
-
-    // Set up the run mock for this specific test
+    
     mainModule.run.mockImplementationOnce(async () => {
       const codeArtifactsDir = core.getInput('code-artifacts-dir');
 
@@ -218,19 +177,15 @@ describe('Lambda Deployment Integration Tests', () => {
         return;
       }
 
-      // This shouldn't execute in this test
       await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
     });
 
-    // Call the main function
     await mainModule.run();
 
-    // Verify error was reported
     expect(core.setFailed).toHaveBeenCalledWith(
       'Code-artifacts-dir must be provided'
     );
     
-    // Verify packaging functions were not called
     expect(fs.mkdir).not.toHaveBeenCalled();
     expect(glob).not.toHaveBeenCalled();
   });
