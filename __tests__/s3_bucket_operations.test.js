@@ -1,10 +1,12 @@
 jest.mock('@actions/core');
 jest.mock('@aws-sdk/client-lambda');
 jest.mock('@aws-sdk/client-s3');
+jest.mock('@aws-sdk/client-sts');
 jest.mock('fs/promises');
 
 const core = require('@actions/core');
 const { S3Client, HeadBucketCommand, CreateBucketCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
 const fs = require('fs/promises');
 const mainModule = require('../index');
 
@@ -29,6 +31,7 @@ describe('S3 Bucket Operations Tests', () => {
     });
     core.info = jest.fn();
     core.error = jest.fn();
+    core.warning = jest.fn();
     core.setFailed = jest.fn();
     core.setOutput = jest.fn();
 
@@ -40,6 +43,15 @@ describe('S3 Bucket Operations Tests', () => {
 
     mockS3Send = jest.fn();
     S3Client.prototype.send = mockS3Send;
+    
+    STSClient.prototype.send = jest.fn().mockImplementation((command) => {
+      if (command instanceof GetCallerIdentityCommand) {
+        return Promise.resolve({
+          Account: '123456789012' 
+        });
+      }
+      return Promise.reject(new Error('Unknown STS command'));
+    });
   });
   describe('checkBucketExists function', () => {
     it('should return true when bucket exists', async () => {
@@ -121,7 +133,6 @@ describe('S3 Bucket Operations Tests', () => {
         })
       );
       const createBucketCommand = CreateBucketCommand.mock.calls[0][0];
-      // For us-east-1, CreateBucketConfiguration is not set in the implementation
       expect(createBucketCommand.CreateBucketConfiguration).toBeUndefined();
     });
     it('should handle bucket already exists error', async () => {
@@ -132,6 +143,24 @@ describe('S3 Bucket Operations Tests', () => {
       await expect(mainModule.createBucket(s3Client, 'existing-bucket', 'us-east-1'))
         .rejects.toThrow();
       expect(core.error).toHaveBeenCalledWith(expect.stringContaining('already taken'));
+    });
+    
+    it('should handle bucket already owned by you error', async () => {
+      const ownedError = new Error('Bucket already owned by you');
+      ownedError.name = 'BucketAlreadyOwnedByYou';
+      ownedError.code = 'BucketAlreadyOwnedByYou';
+      
+      mockS3Send.mockRejectedValueOnce(ownedError);
+      const s3Client = new S3Client({ region: 'us-east-1' });
+      
+      await expect(mainModule.createBucket(s3Client, 'my-existing-bucket', 'us-east-1'))
+        .rejects.toThrow(ownedError);
+        
+      expect(core.info).toHaveBeenCalledWith('Creating S3 bucket: my-existing-bucket');
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Sending CreateBucket request'));
+      
+      expect(mockS3Send).toHaveBeenCalledTimes(1);
+      expect(mockS3Send).toHaveBeenCalledWith(expect.any(CreateBucketCommand));
     });
     it('should handle permission denied error', async () => {
       const accessError = new Error('Access Denied');
@@ -238,6 +267,35 @@ describe('S3 Bucket Operations Tests', () => {
       )).rejects.toThrow('Permission denied');
       expect(core.error).toHaveBeenCalled();
     });
+    
+    it('should handle bucket already owned by you error in uploadToS3', async () => {
+      fs.readFile.mockResolvedValue(Buffer.from('test file content'));
+      fs.access.mockResolvedValue(undefined);
+      
+      const notFoundError = new Error('Not Found');
+      notFoundError.$metadata = { httpStatusCode: 404 };
+      notFoundError.name = 'NotFound';
+      mockS3Send.mockRejectedValueOnce(notFoundError);
+      
+      const ownedError = new Error('Bucket already owned by you');
+      ownedError.name = 'BucketAlreadyOwnedByYou';
+      ownedError.code = 'BucketAlreadyOwnedByYou';
+      
+      mockS3Send.mockRejectedValueOnce(ownedError);
+      
+      await expect(mainModule.uploadToS3(
+        '/path/to/deployment.zip',
+        'my-existing-bucket',
+        'lambda/function.zip',
+        'us-east-1'
+      )).rejects.toThrow('Bucket already owned by you');
+      
+      expect(core.error).toHaveBeenCalledWith(expect.stringContaining('Failed to create bucket my-existing-bucket'));
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Bucket name my-existing-bucket is already taken'));
+      
+      expect(core.info).toHaveBeenCalledWith('Bucket my-existing-bucket does not exist. Attempting to create it...');
+      expect(core.info).toHaveBeenCalledWith('Creating S3 bucket: my-existing-bucket');
+    });
     it('should handle S3 upload errors', async () => {
 
       fs.readFile.mockResolvedValue(Buffer.from('test file content'));
@@ -254,7 +312,7 @@ describe('S3 Bucket Operations Tests', () => {
         'test-bucket',
         'key.zip',
         'us-east-1',
-        '123456789012' // Adding expected bucket owner
+        '123456789012' 
       )).rejects.toThrow('Upload failed');
 
       const errorCalls = core.error.mock.calls.flat().join(' ');
@@ -285,6 +343,22 @@ describe('S3 Bucket Operations Tests', () => {
     });
   });
   
+  describe('getAwsAccountId function', () => {
+    it('should retrieve AWS account ID successfully', async () => {
+      const result = await mainModule.getAwsAccountId('us-east-1');
+      expect(result).toBe('123456789012');
+      expect(STSClient.prototype.send).toHaveBeenCalledWith(expect.any(GetCallerIdentityCommand));
+      expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Successfully retrieved AWS account ID'));
+    });
+
+    it('should handle errors and return null', async () => {
+      STSClient.prototype.send = jest.fn().mockRejectedValueOnce(new Error('STS error'));
+      const result = await mainModule.getAwsAccountId('us-east-1');
+      expect(result).toBeNull();
+      expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('Failed to retrieve AWS account ID'));
+    });
+  });
+
   describe('S3 Key Generation', () => {
     it('should generate S3 key with timestamp and commit hash', () => {
       const originalEnv = process.env;
