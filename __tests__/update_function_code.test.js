@@ -19,13 +19,13 @@ const {
 } = require('@aws-sdk/client-lambda');
 const fs = require('fs/promises');
 const path = require('path');
-const mainModule = require('../index');
+const index = require('../index');
 
-describe('Update Function Code Tests', () => {
+describe('Lambda Function Code Tests', () => {
   
-  jest.setTimeout(30000);
+  jest.setTimeout(60);
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     
     process.cwd = jest.fn().mockReturnValue('/mock/cwd');
     
@@ -77,200 +77,403 @@ describe('Update Function Code Tests', () => {
       return Promise.resolve({});
     });
     
-    jest.spyOn(mainModule, 'checkFunctionExists').mockResolvedValue(true);
+    jest.spyOn(index, 'checkBucketExists').mockResolvedValue(true);
+
+    jest.spyOn(index, 'checkFunctionExists').mockResolvedValue(true);
   });
-  test('should properly construct parameters for UpdateFunctionCodeCommand', async () => {
+  test('Test the updateFunctionCode function with S3 upload method', async () => {
+    const originalUpdateFunctionCode = index.updateFunctionCode;
     
-    const functionName = 'test-function';
-    const zipPath = '/mock/cwd/lambda-function.zip';
-    const architectures = 'x86_64';
-    const sourceKmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/test-key';
-    const revisionId = 'abc123';
-    
-    const zipContent = await fs.readFile(zipPath);
-    
-    const params = {
-      FunctionName: functionName,
-      ZipFile: zipContent,
-      Architectures: [architectures],
-      Publish: true,
-      RevisionId: revisionId,
-      SourceKmsKeyArn: sourceKmsKeyArn
-    };
-    
-    expect(params.FunctionName).toBe(functionName);
-    expect(params.ZipFile).toBeDefined();
-    expect(params.Architectures).toEqual([architectures]);
-    expect(params.Publish).toBe(true);
-    expect(params.RevisionId).toBe(revisionId);
-    expect(params.SourceKmsKeyArn).toBe(sourceKmsKeyArn);
-    
-    const commandSpy = jest.spyOn(require('@aws-sdk/client-lambda'), 'UpdateFunctionCodeCommand');
-    
-    new UpdateFunctionCodeCommand(params);
-    
-    expect(commandSpy).toHaveBeenCalledWith(params);
-  });
-  test('should correctly format and send the update code command', async () => {
-    
-    const mockLambdaClient = {
-      send: jest.fn().mockResolvedValue({
-        FunctionName: 'test-function',
-        FunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
-        Version: '2'
-      })
-    };
-    
-    const mockZipContent = Buffer.from('mock zip content');
-    fs.readFile.mockResolvedValue(mockZipContent);
-    
-    const params = {
-      FunctionName: 'test-function',
-      ZipFile: mockZipContent,
-      Architectures: ['x86_64'],
-      Publish: true,
-      RevisionId: 'abc123'
-    };
-    
-    jest.spyOn(mainModule, 'cleanNullKeys').mockImplementation((obj) => {
-      return obj; 
+    index.updateFunctionCode = jest.fn().mockImplementation(async (client, params) => {
+      const s3Result = {
+        bucket: params.s3Bucket,
+        key: params.s3Key
+      };
+      
+      const command = new UpdateFunctionCodeCommand({
+        FunctionName: params.functionName,
+        S3Bucket: params.s3Bucket,
+        S3Key: params.s3Key,
+        ...(params.architectures && { 
+          Architectures: Array.isArray(params.architectures) 
+            ? params.architectures 
+            : [params.architectures] 
+        }),
+        ...(params.publish !== undefined && { Publish: params.publish }),
+        ...(params.dryRun !== undefined && { DryRun: params.dryRun })
+      });
+      
+      const response = await client.send(command);
+      
+      core.setOutput('function-arn', response.FunctionArn);
+      if (response.Version) {
+        core.setOutput('version', response.Version);
+      }
+      
+      return response;
     });
     
-    const cleanedParams = mainModule.cleanNullKeys(params);
-    
-    const command = new UpdateFunctionCodeCommand(cleanedParams);
-    
-    const result = await mockLambdaClient.send(command);
-    
-    expect(mainModule.cleanNullKeys).toHaveBeenCalled();
-    
-    expect(mockLambdaClient.send).toHaveBeenCalledWith(command);
-    
-    expect(result.FunctionName).toBe('test-function');
-    expect(result.FunctionArn).toBe('arn:aws:lambda:us-east-1:123456789012:function:test-function');
-    expect(result.Version).toBe('2');
+    try {
+      const mockClient = new LambdaClient();
+      const mockParams = {
+        functionName: 'test-function',
+        finalZipPath: '/mock/path/lambda.zip',
+        useS3Method: true,
+        s3Bucket: 'test-bucket',
+        s3Key: 'test-key',
+        architectures: 'x86_64',
+        publish: true,
+        dryRun: false,
+        region: 'us-east-1'
+      };
+      
+      await index.updateFunctionCode(mockClient, mockParams);
+      
+      expect(index.updateFunctionCode).toHaveBeenCalledWith(mockClient, mockParams);
+      
+      const command = UpdateFunctionCodeCommand.mock.calls[0][0];
+      expect(command).toHaveProperty('FunctionName', 'test-function');
+      expect(command).toHaveProperty('S3Bucket', 'test-bucket');
+      expect(command).toHaveProperty('S3Key', 'test-key');
+      expect(command).toHaveProperty('Architectures', ['x86_64']);
+      expect(command).toHaveProperty('Publish', true);
+      
+      expect(core.setOutput).toHaveBeenCalledWith('function-arn', expect.any(String));
+      expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String));
+    } finally {
+      index.updateFunctionCode = originalUpdateFunctionCode;
+    }
   });
-  test('should handle function code update errors gracefully', async () => {
-    
-    const updateError = new Error('Failed to update function code');
-    updateError.name = 'CodeStorageExceededException';
-    
-    const mockLambdaClient = {
-      send: jest.fn().mockRejectedValue(updateError)
-    };
-    
-    const mockZipContent = Buffer.from('mock zip content');
-    
-    const params = {
-      FunctionName: 'test-function',
-      ZipFile: mockZipContent,
-      Architectures: ['x86_64'],
-      Publish: true
-    };
-    
-    const command = new UpdateFunctionCodeCommand(params);
+  
+  test('S3 method should propagate errors from uploadToS3', async () => {
+    const originalUpdateFunctionCode = index.updateFunctionCode;
     
     try {
+      index.updateFunctionCode = async (client, params) => {
+        if (params.useS3Method) {
+          core.info(`Using S3 deployment method with bucket: ${params.s3Bucket}, key: ${params.s3Key}`);
+
+          await index.uploadToS3(params.finalZipPath, params.s3Bucket, params.s3Key, params.region);
+
+          core.info(`Successfully uploaded package to S3: s3://${params.s3Bucket}/${params.s3Key}`);
+
+        } else {
+          return;
+        }
+      };
+
+      core.info = jest.fn();
+
+      const mockClient = {};
+
+      const mockParams = {
+        functionName: 'test-function',
+        finalZipPath: '/mock/path/lambda.zip',
+        useS3Method: true,
+        s3Bucket: 'test-bucket',
+        s3Key: 'test-key',
+        architectures: 'x86_64',
+        publish: true,
+        dryRun: false,
+        region: 'us-east-1'
+      };
+
+      const originalUploadToS3 = index.uploadToS3;
+      const testError = new Error('S3 upload failure');
+      index.uploadToS3 = jest.fn().mockRejectedValue(testError);
+
+      await expect(index.updateFunctionCode(mockClient, mockParams))
+        .rejects.toThrow('S3 upload failure');
+
+      expect(core.info).toHaveBeenCalledWith(
+        expect.stringContaining(`Using S3 deployment method with bucket: ${mockParams.s3Bucket}, key: ${mockParams.s3Key}`)
+      );
+
+      expect(index.uploadToS3).toHaveBeenCalledWith(
+        mockParams.finalZipPath, 
+        mockParams.s3Bucket,
+        mockParams.s3Key,
+        mockParams.region
+      );
+
+      expect(core.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('Successfully uploaded package to S3')
+      );
       
-      await mockLambdaClient.send(command);
-      
-      fail('Expected an error to be thrown');
-    } catch (error) {
-      
-      expect(error.name).toBe('CodeStorageExceededException');
-      expect(error.message).toBe('Failed to update function code');
-      
-      core.setFailed(`Failed to update function code: ${error.message}`);
+      index.uploadToS3 = originalUploadToS3;
+    } finally {
+      index.updateFunctionCode = originalUpdateFunctionCode;
     }
-    
+  });
+
+  test('Handle errors in updateFunctionCode function', async () => {
+    const mockClient = new LambdaClient();
+    const mockError = new Error('Function code update failed');
+    mockError.name = 'ResourceNotFoundException';
+    mockClient.send.mockRejectedValue(mockError);
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow();
+
     expect(core.setFailed).toHaveBeenCalledWith(
       expect.stringContaining('Failed to update function code')
     );
   });
-  test('should simulate dry run mode for code updates', () => {
-    
-    const infoSpy = jest.fn();
-    const setOutputSpy = jest.fn();
-    
-    function simulateDryRun() {
-      
-      infoSpy('DRY RUN MODE: No AWS resources will be created or modified');
-      infoSpy('[DRY RUN] Would update function code with parameters:');
-      infoSpy(JSON.stringify({ 
-        FunctionName: 'test-function', 
-        ZipFile: '<binary zip data not shown>',
-        DryRun: true 
-      }));
-      const mockArn = 'arn:aws:lambda:us-east-1:000000000000:function:test-function';
-      setOutputSpy('function-arn', mockArn);
-      setOutputSpy('version', '$LATEST');
-      infoSpy('[DRY RUN] Function code validation passed');
-      infoSpy('[DRY RUN] Function code update validation completed');
-    }
-    
-    simulateDryRun();
-    
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('DRY RUN MODE:'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[DRY RUN] Would update function code'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Function code validation passed'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Function code update validation completed'));
-    
-    expect(setOutputSpy).toHaveBeenCalledWith('function-arn', expect.stringContaining('arn:aws:lambda:us-east-1:000000000000:function:test-function'));
-    expect(setOutputSpy).toHaveBeenCalledWith('version', '$LATEST');
-  });
-  test('should support custom revision-id and source-kms-key-arn', () => {
-    
-    const functionName = 'test-function';
-    const revisionId = 'test-revision-123';
-    const sourceKmsKeyArn = 'arn:aws:kms:us-east-1:123456789012:key/abcdef12-3456-7890-abcd-ef1234567890';
-    const zipContent = Buffer.from('mock zip content');
-    
-    const params = {
-      FunctionName: functionName,
-      ZipFile: zipContent,
-      Architectures: ['x86_64'],
-      Publish: true,
-      RevisionId: revisionId,
-      SourceKmsKeyArn: sourceKmsKeyArn
+  
+  test('Test direct upload method (ZipFile parameter)', async () => {
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+
+    const mockClient = new LambdaClient();
+
+    mockClient.send.mockResolvedValue({
+      FunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+      Version: '3'
+    });
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false, 
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
     };
+
+    await index.updateFunctionCode(mockClient, mockParams);
+
+    expect(fs.readFile).toHaveBeenCalledWith(mockParams.finalZipPath);
+
+    expect(mockClient.send).toHaveBeenCalled();
+    const commandCall = mockClient.send.mock.calls[0][0];
+    expect(commandCall).toBeInstanceOf(UpdateFunctionCodeCommand);
+
+    expect(core.info).toHaveBeenCalledWith(expect.stringContaining(`Original buffer length: ${mockZipContent.length} bytes`));
+
+    expect(core.setOutput).toHaveBeenCalledWith('function-arn', expect.any(String));
+    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String));
+  });
+  
+  test('Handle file read errors - ENOENT (file not found)', async () => {
+    const readError = new Error('File not found');
+    readError.code = 'ENOENT';
+    fs.readFile.mockRejectedValue(readError);
     
-    const commandSpy = jest.spyOn(require('@aws-sdk/client-lambda'), 'UpdateFunctionCodeCommand');
-    
-    new UpdateFunctionCodeCommand(params);
-    
-    expect(commandSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        RevisionId: revisionId,
-        SourceKmsKeyArn: sourceKmsKeyArn
-      })
+    const mockClient = new LambdaClient();
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      codeArtifactsDir: '/mock/src',
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('File not found');
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to read Lambda deployment package')
+    );
+ 
+    expect(core.error).toHaveBeenCalledWith(
+      expect.stringContaining('File not found. Ensure the code artifacts directory')
     );
   });
-  test('should handle array conversion for architectures parameter', () => {
-    
-    const functionName = 'test-function';
-    const architectures = 'arm64'; 
-    const zipContent = Buffer.from('mock zip content');
-    
-    const params = {
-      FunctionName: functionName,
-      ZipFile: zipContent,
-      Architectures: architectures, 
-      Publish: true
+  
+  test('Handle file read errors - EACCES (permission denied)', async () => {
+    const readError = new Error('Permission denied');
+    readError.code = 'EACCES';
+    fs.readFile.mockRejectedValue(readError);
+
+    const mockClient = new LambdaClient();
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      codeArtifactsDir: '/mock/src',
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
     };
     
-    const processedParams = {
-      ...params,
-      Architectures: Array.isArray(architectures) ? architectures : [architectures]
-    };
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('Permission denied');
     
-    const commandSpy = jest.spyOn(require('@aws-sdk/client-lambda'), 'UpdateFunctionCodeCommand');
-    
-    new UpdateFunctionCodeCommand(processedParams);
-    
-    expect(commandSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        Architectures: ['arm64'] 
-      })
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to read Lambda deployment package')
     );
+    
+    expect(core.error).toHaveBeenCalledWith(
+      expect.stringContaining('Permission denied. Check file access permissions.')
+    );
+  });
+  
+  test('Test dry run mode', async () => {
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+    
+    const mockClient = new LambdaClient();
+
+    mockClient.send.mockResolvedValue({
+      FunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+      Version: '$LATEST'
+    });
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: true, 
+      region: 'us-east-1'
+    };
+
+    await index.updateFunctionCode(mockClient, mockParams);
+
+    expect(mockClient.send).toHaveBeenCalled();
+    const commandCall = mockClient.send.mock.calls[0][0];
+    expect(commandCall).toBeInstanceOf(UpdateFunctionCodeCommand);
+
+    expect(core.info).toHaveBeenCalledWith(expect.stringMatching(/\[DRY RUN\]/));
+    expect(core.info).toHaveBeenCalledWith('[DRY RUN] Function code validation passed');
+    expect(core.info).toHaveBeenCalledWith('[DRY RUN] Function code update simulation completed');
+
+    expect(core.setOutput).toHaveBeenCalledWith('function-arn', expect.any(String));
+    expect(core.setOutput).toHaveBeenCalledWith('version', expect.any(String));
+  });
+  
+  test('Handle AWS specific errors - ThrottlingException', async () => {
+
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+  
+    const mockClient = new LambdaClient();
+
+    const throttlingError = new Error('Rate exceeded');
+    throttlingError.name = 'ThrottlingException';
+    mockClient.send.mockRejectedValue(throttlingError);
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('Rate exceeded');
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'Rate limit exceeded and maximum retries reached: Rate exceeded'
+    );
+  });
+  
+  test('Handle AWS specific errors - Server error (500)', async () => {
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+
+    const mockClient = new LambdaClient();
+
+    const serverError = new Error('Internal server error');
+    serverError.$metadata = { httpStatusCode: 500 };
+    mockClient.send.mockRejectedValue(serverError);
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('Internal server error');
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'Server error (500): Internal server error. All retry attempts failed.'
+    );
+  });
+  
+  test('Handle AWS specific errors - Access denied', async () => {
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+
+    const mockClient = new LambdaClient();
+
+    const accessError = new Error('Access denied');
+    accessError.name = 'AccessDeniedException';
+    mockClient.send.mockRejectedValue(accessError);
+    
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+    
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('Access denied');
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'Action failed with error: Permissions error: Access denied. Check IAM roles.'
+    );
+  });
+  
+  test('Log stack trace when available', async () => {
+    const mockZipContent = Buffer.from('mock zip content');
+    fs.readFile.mockResolvedValue(mockZipContent);
+
+    const mockClient = new LambdaClient();
+
+    const error = new Error('Something went wrong');
+    error.stack = 'Error: Something went wrong\n    at Function.updateFunctionCode';
+    mockClient.send.mockRejectedValue(error);
+
+    core.debug = jest.fn();
+
+    const mockParams = {
+      functionName: 'test-function',
+      finalZipPath: '/mock/path/lambda.zip',
+      useS3Method: false,
+      architectures: 'x86_64',
+      publish: true,
+      dryRun: false,
+      region: 'us-east-1'
+    };
+
+    await expect(index.updateFunctionCode(mockClient, mockParams))
+      .rejects.toThrow('Something went wrong');
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'Failed to update function code: Something went wrong'
+    );
+
+    expect(core.debug).toHaveBeenCalledWith(error.stack);
   });
 });

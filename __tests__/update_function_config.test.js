@@ -29,7 +29,7 @@ describe('Update Function Configuration Tests', () => {
     waitUntilFunctionUpdated.mockReset();
     waitUntilFunctionUpdated.mockResolvedValue({});
   });
-  it('should update function configuration with correct parameters', async () => {
+  test('should update function configuration with correct parameters', async () => {
     
     mockSend.mockResolvedValue({
       FunctionName: 'test-function',
@@ -152,7 +152,7 @@ describe('Update Function Configuration Tests', () => {
     
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Updating function configuration for test-function'));
   });
-  it('should handle minimal configuration parameters', async () => {
+  test('should handle minimal configuration parameters', async () => {
     
     mockSend.mockResolvedValue({
       FunctionName: 'test-function',
@@ -193,7 +193,7 @@ describe('Update Function Configuration Tests', () => {
     
     expect(waitUntilFunctionUpdated).toHaveBeenCalled();
   });
-  it('should handle rate limit errors', async () => {
+  test('should handle rate limit errors', async () => {
     
     const throttlingError = new Error('Rate exceeded');
     throttlingError.name = 'ThrottlingException';
@@ -211,7 +211,7 @@ describe('Update Function Configuration Tests', () => {
       'Rate limit exceeded and maximum retries reached: Rate exceeded'
     );
   });
-  it('should handle server errors', async () => {
+  test('should handle server errors', async () => {
     
     const serverError = new Error('Internal server error');
     serverError.$metadata = { httpStatusCode: 500 };
@@ -229,7 +229,7 @@ describe('Update Function Configuration Tests', () => {
       'Server error (500): Internal server error. All retry attempts failed.'
     );
   });
-  it('should handle permission errors', async () => {
+  test('should handle permission errors', async () => {
     
     const accessError = new Error('Access denied');
     accessError.name = 'AccessDeniedException';
@@ -247,7 +247,7 @@ describe('Update Function Configuration Tests', () => {
       'Action failed with error: Permissions error: Access denied. Check IAM roles.'
     );
   });
-  it('should handle general errors', async () => {
+  test('should handle general errors', async () => {
     
     const generalError = new Error('Something went wrong');
     mockSend.mockRejectedValue(generalError);
@@ -264,7 +264,7 @@ describe('Update Function Configuration Tests', () => {
       'Failed to update function configuration: Something went wrong'
     );
   });
-  it('should log stack trace when available', async () => {
+  test('should log stack trace when available', async () => {
     
     const error = new Error('Something went wrong');
     error.stack = 'Error: Something went wrong\n    at Function.updateFunctionConfiguration';
@@ -282,7 +282,7 @@ describe('Update Function Configuration Tests', () => {
     
     expect(core.debug).toHaveBeenCalledWith(error.stack);
   });
-  it('should include all configuration options in the command', async () => {
+  test('should include all configuration options in the command', async () => {
     
     mockSend.mockResolvedValue({
       FunctionName: 'test-function'

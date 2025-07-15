@@ -53,8 +53,9 @@ describe('S3 Bucket Operations Tests', () => {
       return Promise.reject(new Error('Unknown STS command'));
     });
   });
+  
   describe('checkBucketExists function', () => {
-    it('should return true when bucket exists', async () => {
+    test('should return true when bucket exists', async () => {
 
       mockS3Send.mockResolvedValueOnce({});
       const s3Client = new S3Client({ region: 'us-east-1' });
@@ -64,7 +65,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(mockS3Send).toHaveBeenCalledWith(expect.any(HeadBucketCommand));
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('exists'));
     });
-    it('should return false when bucket does not exist (404)', async () => {
+    test('should return false when bucket does not exist (404)', async () => {
 
       const notFoundError = new Error('Not Found');
       notFoundError.$metadata = { httpStatusCode: 404 };
@@ -76,7 +77,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(result).toBe(false);
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('does not exist'));
     });
-    it('should throw error when HeadBucket returns non-404 error', async () => {
+    test('should throw error when HeadBucket returns non-404 error', async () => {
 
       const accessError = new Error('Access Denied');
       accessError.$metadata = { httpStatusCode: 403 };
@@ -88,7 +89,7 @@ describe('S3 Bucket Operations Tests', () => {
         .rejects.toThrow();
       expect(core.error).toHaveBeenCalledWith(expect.stringContaining('Error checking if bucket exists'));
     });
-    it('should handle region mismatch error (301)', async () => {
+    test('should handle region mismatch error (301)', async () => {
 
       const regionError = new Error('Moved Permanently');
       regionError.$metadata = { httpStatusCode: 301 };
@@ -102,8 +103,9 @@ describe('S3 Bucket Operations Tests', () => {
       expect(core.error).toHaveBeenCalledWith(expect.stringContaining('REGION MISMATCH ERROR'));
     });
   });
+  
   describe('createBucket function', () => {
-    it('should create bucket in non-us-east-1 regions with LocationConstraint', async () => {
+    test('should create bucket in non-us-east-1 regions with LocationConstraint', async () => {
       mockS3Send.mockResolvedValueOnce({
         Location: 'http://test-bucket.s3.amazonaws.com/'
       });
@@ -119,7 +121,7 @@ describe('S3 Bucket Operations Tests', () => {
       );
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Successfully created S3 bucket'));
     });
-    it('should create bucket in us-east-1 without LocationConstraint', async () => {
+    test('should create bucket in us-east-1 without LocationConstraint', async () => {
       mockS3Send.mockResolvedValueOnce({
         Location: 'http://test-bucket.s3.amazonaws.com/'
       });
@@ -135,7 +137,7 @@ describe('S3 Bucket Operations Tests', () => {
       const createBucketCommand = CreateBucketCommand.mock.calls[0][0];
       expect(createBucketCommand.CreateBucketConfiguration).toBeUndefined();
     });
-    it('should handle bucket already exists error', async () => {
+    test('should handle bucket already exists error', async () => {
       const existsError = new Error('Bucket already exists');
       existsError.name = 'BucketAlreadyExists';
       mockS3Send.mockRejectedValueOnce(existsError);
@@ -145,7 +147,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(core.error).toHaveBeenCalledWith(expect.stringContaining('already taken'));
     });
     
-    it('should handle bucket already owned by you error', async () => {
+    test('should handle bucket already owned by you error', async () => {
       const ownedError = new Error('Bucket already owned by you');
       ownedError.name = 'BucketAlreadyOwnedByYou';
       ownedError.code = 'BucketAlreadyOwnedByYou';
@@ -162,7 +164,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(mockS3Send).toHaveBeenCalledTimes(1);
       expect(mockS3Send).toHaveBeenCalledWith(expect.any(CreateBucketCommand));
     });
-    it('should handle permission denied error', async () => {
+    test('should handle permission denied error', async () => {
       const accessError = new Error('Access Denied');
       accessError.name = 'AccessDenied';
       accessError.$metadata = { httpStatusCode: 403 };
@@ -172,21 +174,22 @@ describe('S3 Bucket Operations Tests', () => {
         .rejects.toThrow(/Access denied/);
       expect(core.error).toHaveBeenCalledWith(expect.stringContaining('Access denied'));
     });
-    it('should validate bucket name before creating', async () => {
+    test('should validate bucket name before creating', async () => {
       const s3Client = new S3Client({ region: 'us-east-1' });
       await expect(mainModule.createBucket(s3Client, 'Invalid_Bucket', 'us-east-1'))
         .rejects.toThrow(/Invalid bucket name/);
       expect(mockS3Send).not.toHaveBeenCalled();
     });
   });
+  
   describe('validateBucketName function', () => {
-    it('should validate correct bucket names', () => {
+    test('should validate correct bucket names', () => {
       expect(mainModule.validateBucketName('valid-bucket-name')).toBe(true);
       expect(mainModule.validateBucketName('my.bucket.name')).toBe(true);
       expect(mainModule.validateBucketName('bucket-123')).toBe(true);
       expect(mainModule.validateBucketName('a-really-long-but-valid-bucket-name-within-63-chars')).toBe(true);
     });
-    it('should reject invalid bucket names', () => {
+    test('should reject invalid bucket names', () => {
       expect(mainModule.validateBucketName('UPPERCASE')).toBe(false);
       expect(mainModule.validateBucketName('bucket_with_underscore')).toBe(false);
       expect(mainModule.validateBucketName('sh')).toBe(false); 
@@ -199,8 +202,9 @@ describe('S3 Bucket Operations Tests', () => {
       expect(mainModule.validateBucketName(123)).toBe(false); 
     });
   });
+ 
   describe('uploadToS3 function', () => {
-    it('should upload file to existing S3 bucket', async () => {
+    test('should upload file to existing S3 bucket', async () => {
       fs.readFile.mockResolvedValue(Buffer.from('test file content'));
       jest.spyOn(mainModule, 'checkBucketExists').mockResolvedValue(true);
       jest.clearAllMocks();
@@ -219,7 +223,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(mockS3Send).toHaveBeenCalledWith(expect.any(PutObjectCommand));
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('S3 upload successful, file size'));
     });
-    it('should create bucket if it does not exist', async () => {
+    test('should create bucket if it does not exist', async () => {
 
       jest.clearAllMocks();
 
@@ -252,7 +256,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Bucket new-bucket does not exist. Attempting to create it'));
       expect(mockS3Send).toHaveBeenCalledWith(expect.any(PutObjectCommand));
     });
-    it('should handle file access errors', async () => {
+    test('should handle file access errors', async () => {
 
       const fileError = new Error('Permission denied');
       fileError.code = 'EACCES';
@@ -268,7 +272,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(core.error).toHaveBeenCalled();
     });
     
-    it('should handle bucket already owned by you error in uploadToS3', async () => {
+    test('should handle bucket already owned by you error in uploadToS3', async () => {
       fs.readFile.mockResolvedValue(Buffer.from('test file content'));
       fs.access.mockResolvedValue(undefined);
       
@@ -296,7 +300,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(core.info).toHaveBeenCalledWith('Bucket my-existing-bucket does not exist. Attempting to create it...');
       expect(core.info).toHaveBeenCalledWith('Creating S3 bucket: my-existing-bucket');
     });
-    it('should handle S3 upload errors', async () => {
+    test('should handle S3 upload errors', async () => {
 
       fs.readFile.mockResolvedValue(Buffer.from('test file content'));
       jest.spyOn(mainModule, 'checkBucketExists').mockResolvedValue(true);
@@ -320,7 +324,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(errorCalls).toContain('upload');
       expect(errorCalls).toContain('failed');
     });
-    it('should handle S3 permission errors', async () => {
+    test('should handle S3 permission errors', async () => {
       fs.readFile.mockResolvedValue(Buffer.from('test file content'));
       
       jest.spyOn(mainModule, 'checkBucketExists').mockResolvedValue(true);
@@ -344,14 +348,14 @@ describe('S3 Bucket Operations Tests', () => {
   });
   
   describe('getAwsAccountId function', () => {
-    it('should retrieve AWS account ID successfully', async () => {
+    test('should retrieve AWS account ID successfully', async () => {
       const result = await mainModule.getAwsAccountId('us-east-1');
       expect(result).toBe('123456789012');
       expect(STSClient.prototype.send).toHaveBeenCalledWith(expect.any(GetCallerIdentityCommand));
       expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Successfully retrieved AWS account ID'));
     });
 
-    it('should handle errors and return null', async () => {
+    test('should handle errors and return null', async () => {
       STSClient.prototype.send = jest.fn().mockRejectedValueOnce(new Error('STS error'));
       const result = await mainModule.getAwsAccountId('us-east-1');
       expect(result).toBeNull();
@@ -360,7 +364,7 @@ describe('S3 Bucket Operations Tests', () => {
   });
 
   describe('S3 Key Generation', () => {
-    it('should generate S3 key with timestamp and commit hash', () => {
+    test('should generate S3 key with timestamp and commit hash', () => {
       const originalEnv = process.env;
       process.env = {
         ...originalEnv,
@@ -370,7 +374,7 @@ describe('S3 Bucket Operations Tests', () => {
       process.env = originalEnv;
       expect(key).toMatch(/^lambda-deployments\/test-function\/[\d-]+-abcdef1.zip$/);
     });
-    it('should generate S3 key without commit hash if not available', () => {
+    test('should generate S3 key without commit hash if not available', () => {
       const originalEnv = process.env;
       process.env = { ...originalEnv };
       delete process.env.GITHUB_SHA;
@@ -382,6 +386,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(key).not.toMatch(/[a-f0-9]{7,}\.zip$/);
     });
   });
+  
   describe('End-to-End S3 Deployment Flow', () => {
     let originalRun;
     beforeAll(() => {
@@ -410,7 +415,7 @@ describe('S3 Bucket Operations Tests', () => {
         return Promise.resolve();
       });
     });
-    it('should use S3 deployment method when s3-bucket is provided', async () => {
+    test('should use S3 deployment method when s3-bucket is provided', async () => {
       core.getInput.mockImplementation((name) => {
         const inputs = {
           'function-name': 'test-function',
@@ -458,7 +463,7 @@ describe('S3 Bucket Operations Tests', () => {
         key: 'custom/key/path.zip'
       });
     });
-    it('should generate S3 key when not provided', async () => {
+    test('should generate S3 key when not provided', async () => {
       core.getInput.mockImplementation((name) => {
         const inputs = {
           'function-name': 'test-function',
@@ -485,7 +490,7 @@ describe('S3 Bucket Operations Tests', () => {
       expect(mainModule.generateS3Key).toHaveBeenCalledWith('test-function');
       expect(result).toEqual(mockGeneratedKey);
     });
-    it('should use ZipFile method if no S3 bucket is provided', async () => {
+    test('should use ZipFile method if no S3 bucket is provided', async () => {
       core.getInput.mockImplementation((name) => {
         const inputs = {
           'function-name': 'test-function',

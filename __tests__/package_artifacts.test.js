@@ -78,6 +78,7 @@ describe('Package Code Artifacts Tests', () => {
     core.info = jest.fn();
     core.error = jest.fn();
   });
+  
   test('should successfully package artifacts', async () => {
     const artifactsDir = '/mock/artifacts';
     const result = await packageCodeArtifacts(artifactsDir);
@@ -111,6 +112,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(result).toBe(expectedZipPath);
   });
+  
   test('should handle nested directory structures', async () => {
     
     fs.readdir.mockImplementation((dir, options) => {
@@ -140,6 +142,7 @@ describe('Package Code Artifacts Tests', () => {
       { recursive: true }
     );
   });
+  
   test('should handle files with hidden/dot files', async () => {
     
     fs.readdir.mockImplementation((dir, options) => {
@@ -170,6 +173,7 @@ describe('Package Code Artifacts Tests', () => {
       { recursive: true }
     );
   });
+  
   test('should handle error during directory cleanup', async () => {
     
     const expectedTempDir = '/mock/tmp/lambda-temp-1234567890';
@@ -194,6 +198,7 @@ describe('Package Code Artifacts Tests', () => {
     expect(fs.mkdir).toHaveBeenCalled();
     expect(result).toBe(expectedZipPath);
   });
+  
   test('should handle error during directory creation', async () => {
     
     const mkdirError = new Error('Failed to create directory');
@@ -204,6 +209,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(core.error).toHaveBeenCalledWith('Failed to package artifacts: Failed to create directory');
   });
+  
   test('should handle error during file copying', async () => {
     
     fs.cp.mockImplementation((src, dest, options) => {
@@ -229,6 +235,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(core.error).toHaveBeenCalledWith('Failed to package artifacts: Failed to copy file');
   });
+  
   test('should handle error during zip creation', async () => {
     
     const mockZipInstance = {
@@ -256,6 +263,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(core.error).toHaveBeenCalledWith('Failed to package artifacts: Failed to write zip');
   });
+  
   test('should verify zip file contents after creation', async () => {
     const artifactsDir = '/mock/artifacts';
     const zipPath = await packageCodeArtifacts(artifactsDir);
@@ -272,6 +280,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(fs.stat).toHaveBeenCalledWith(zipPath);
   });
+  
   test('should use provided artifact directory path correctly', async () => {
     
     const customArtifactsDir = '/custom/artifacts/path';
@@ -283,6 +292,7 @@ describe('Package Code Artifacts Tests', () => {
     expect(fs.access).toHaveBeenCalledWith(customArtifactsDir);
     expect(fs.readdir).toHaveBeenCalledWith(customArtifactsDir);
   });
+  
   test('should throw error for empty artifacts directory', async () => {
     
     fs.readdir.mockImplementation(() => {
@@ -297,6 +307,7 @@ describe('Package Code Artifacts Tests', () => {
       `Code artifacts directory '${resolvedPath}' is empty, no files to package`
     );
   });
+  
   test('should handle artifacts directory access error', async () => {
     
     const accessError = new Error('Directory does not exist');
@@ -309,6 +320,7 @@ describe('Package Code Artifacts Tests', () => {
       `Code artifacts directory '${resolvedPath}' does not exist or is not accessible`
     );
   });
+  
   test('should use validateAndResolvePath to prevent path traversal attacks', async () => {
     
     validations.validateAndResolvePath = jest.fn().mockReturnValue('/safe/resolved/path');
@@ -320,6 +332,7 @@ describe('Package Code Artifacts Tests', () => {
     expect(fs.access).toHaveBeenCalledWith('/safe/resolved/path');
     expect(fs.readdir).toHaveBeenCalledWith('/safe/resolved/path');
   });
+  
   test('should throw error when validateAndResolvePath detects path traversal', async () => {
     
     const securityError = new Error('Security error: Path traversal attempt detected');
@@ -332,6 +345,7 @@ describe('Package Code Artifacts Tests', () => {
     
     expect(validations.validateAndResolvePath).toHaveBeenCalledWith(maliciousPath, '/mock/cwd');
   });
+  
   test('should handle absolute paths using validateAndResolvePath', async () => {
     
     path.isAbsolute = jest.fn().mockReturnValue(true);

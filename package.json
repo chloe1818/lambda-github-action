@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "ncc build index.js -o dist",
+    "package": "ncc build index.js -o dist",
     "test": "jest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

@@ -1,7 +1,7 @@
 const { deepEqual } = require('../index');
 
 describe('Deep Equal Tests', () => {
-  it('should compare primitive values correctly', () => {
+  test('Compare primitive values', () => {
     expect(deepEqual(null, null)).toBe(true);
     expect(deepEqual(undefined, undefined)).toBe(true);
     expect(deepEqual(123, 123)).toBe(true);
@@ -14,7 +14,7 @@ describe('Deep Equal Tests', () => {
     expect(deepEqual('test', 'TEST')).toBe(false);
   });
 
-  it('should compare arrays correctly', () => {
+  test('Compare arrays', () => {
     expect(deepEqual([], [])).toBe(true);
     expect(deepEqual([1, 2, 3], [1, 2, 3])).toBe(true);
     expect(deepEqual(['a', 'b', 'c'], ['a', 'b', 'c'])).toBe(true);
@@ -25,7 +25,7 @@ describe('Deep Equal Tests', () => {
     expect(deepEqual([1, [2, 3], 4], [1, [2, 4], 4])).toBe(false);
   });
 
-  it('should compare objects correctly', () => {
+  test('Compare objects', () => {
     expect(deepEqual({}, {})).toBe(true);
     expect(deepEqual({ a: 1, b: 2 }, { a: 1, b: 2 })).toBe(true);
     expect(deepEqual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true); 
@@ -42,7 +42,7 @@ describe('Deep Equal Tests', () => {
     )).toBe(false);
   });
 
-  it('should handle mixed nested structures', () => {
+  test('Handle mixed nested structures', () => {
     const obj1 = {
       name: 'test',
       values: [1, 2, 3],
@@ -84,7 +84,7 @@ describe('Deep Equal Tests', () => {
     expect(deepEqual(obj1, obj3)).toBe(false);
   });
 
-  it('should correctly handle type mismatches', () => {
+  test('Handle type mismatches', () => {
     expect(deepEqual([], {})).toBe(false);
     expect(deepEqual({ 0: 'a', 1: 'b', length: 2 }, ['a', 'b'])).toBe(false);
     expect(deepEqual({}, null)).toBe(false);
@@ -93,7 +93,7 @@ describe('Deep Equal Tests', () => {
     expect(deepEqual([1, 2, 3], '123')).toBe(false);
   });
 
-  it('should handle special edge cases', () => {
+  test('Handle special edge cases', () => {
     expect(deepEqual({}, {})).toBe(true);
     expect(deepEqual([], [])).toBe(true);
     expect(deepEqual(
@@ -106,7 +106,7 @@ describe('Deep Equal Tests', () => {
     )).toBe(false);
   });
 
-  it('should handle lambda function configuration objects correctly', () => {
+  test('Handle lambda function configuration objects', () => {
       const lambdaConfig1 = {
       FunctionName: 'test-function',
       Runtime: 'nodejs18.x',

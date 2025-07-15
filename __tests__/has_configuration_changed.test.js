@@ -8,12 +8,14 @@ describe('Has Configuration Changed Tests', () => {
     jest.resetAllMocks();
     core.info = jest.fn();
   });
+ 
   test('should return true when current config is empty/null', async () => {
     const result = await hasConfigurationChanged(null, { Runtime: 'nodejs18.x' });
     expect(result).toBe(true);
     const emptyResult = await hasConfigurationChanged({}, { Runtime: 'nodejs18.x' });
     expect(emptyResult).toBe(true);
   });
+  
   test('should return false when configurations are identical', async () => {
     const current = {
       Runtime: 'nodejs18.x',
@@ -29,6 +31,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(false);
     expect(core.info).not.toHaveBeenCalled();
   });
+  
   test('should return true when string values differ', async () => {
     const current = {
       Runtime: 'nodejs16.x',
@@ -42,6 +45,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Runtime'));
   });
+  
   test('should return true when numeric values differ', async () => {
     const current = {
       MemorySize: 128,
@@ -55,6 +59,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in MemorySize'));
   });
+ 
   test('should return true when object values differ', async () => {
     const current = {
       Environment: {
@@ -76,6 +81,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Environment'));
   });
+  
   test('should return true when array values differ', async () => {
     const current = {
       Layers: ['arn:aws:lambda:us-east-1:123456789012:layer:layer1:1']
@@ -90,6 +96,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Layers'));
   });
+  
   test('should ignore undefined or null values in updated config', async () => {
     const current = {
       Runtime: 'nodejs18.x',
@@ -109,6 +116,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Timeout'));
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Handler'));
   });
+  
   test('should handle complex nested objects', async () => {
     const current = {
       VpcConfig: {
@@ -140,6 +148,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in VpcConfig'));
   });
+  
   test('should return false when no meaningful changes exist', async () => {
     const current = {
       Runtime: 'nodejs18.x',
@@ -180,6 +189,7 @@ describe('Has Configuration Changed Tests', () => {
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(false);
   });
+  
   test('should handle arrays with empty values', async () => {
     const current = {
       Layers: ['layer1', 'layer2', 'layer3']
@@ -192,6 +202,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Layers'));
   });
+  
   test('should handle empty objects properly', async () => {
     const current = {
       Environment: {
@@ -207,6 +218,7 @@ describe('Has Configuration Changed Tests', () => {
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(false);
   });
+  
   test('should handle objects with empty nested properties', async () => {
     const current = {
       Environment: {
@@ -231,6 +243,7 @@ describe('Has Configuration Changed Tests', () => {
     const result = await hasConfigurationChanged(current, updated);
     expect(result).toBe(false);
   });
+  
   test('should detect changes when empty values are replaced with real values', async () => {
     const current = {
       Environment: {
@@ -254,6 +267,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in Environment'));
   });
+  
   test('should handle zero as a valid non-empty value', async () => {
     const current = {
       RetryAttempts: 3
@@ -265,6 +279,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in RetryAttempts'));
   });
+  
   test('should handle false as a valid non-empty value', async () => {
     const current = {
       CacheEnabled: true
@@ -276,6 +291,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in CacheEnabled'));
   });
+  
   test('should handle new configuration parameters', async () => {
     const current = {
       Runtime: 'nodejs18.x',
@@ -293,6 +309,7 @@ describe('Has Configuration Changed Tests', () => {
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in SnapStart'));
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in LoggingConfig'));
   });
+  
   test('should handle special case for VpcConfig with empty arrays', async () => {
     const current = {
       VpcConfig: {
@@ -311,13 +328,15 @@ describe('Has Configuration Changed Tests', () => {
     expect(result).toBe(true);
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Configuration difference detected in VpcConfig'));
   });
-    test('should correctly identify empty values', () => {
+  
+  test('should correctly identify empty values', () => {
     expect(isEmptyValue(null)).toBe(true);
     expect(isEmptyValue(undefined)).toBe(true);
     expect(isEmptyValue('')).toBe(true);
     expect(isEmptyValue([])).toBe(true);
     expect(isEmptyValue({})).toBe(true);
   });
+  
   test('should identify non-empty values', () => {
     expect(isEmptyValue('value')).toBe(false);
     expect(isEmptyValue(0)).toBe(false);
@@ -325,13 +344,15 @@ describe('Has Configuration Changed Tests', () => {
     expect(isEmptyValue(['item'])).toBe(false);
     expect(isEmptyValue({ key: 'value' })).toBe(false);
   });
+  
   test('should handle nested structures', () => {
     expect(isEmptyValue([null, undefined, ''])).toBe(true);
     expect(isEmptyValue({ a: null, b: undefined, c: '' })).toBe(true);
     expect(isEmptyValue([null, 'value', undefined])).toBe(false);
     expect(isEmptyValue({ a: null, b: 'value', c: undefined })).toBe(false);
   });
-    test('should remove null and undefined values from objects', () => {
+    
+  test('should remove null and undefined values from objects', () => {
     const input = {
       validProp: 'value',
       nullProp: null,
@@ -343,6 +364,7 @@ describe('Has Configuration Changed Tests', () => {
       validProp: 'value'
     });
   });
+  
   test('should filter empty values from arrays', () => {
     const input = {
       array: [1, null, 2, undefined, '', 3]
@@ -352,6 +374,7 @@ describe('Has Configuration Changed Tests', () => {
       array: [1, 2, 3]
     });
   });
+  
   test('should handle nested objects and arrays', () => {
     const input = {
       nested: {
@@ -370,6 +393,7 @@ describe('Has Configuration Changed Tests', () => {
       }
     });
   });
+  
   test('should preserve VpcConfig with empty arrays for SubnetIds and SecurityGroupIds', () => {
     const input = {
       VpcConfig: {
@@ -385,6 +409,7 @@ describe('Has Configuration Changed Tests', () => {
       }
     });
   });
+  
   test('should handle VpcConfig even when other properties have empty values', () => {
     const input = {
       FunctionName: 'test-function',
@@ -406,6 +431,7 @@ describe('Has Configuration Changed Tests', () => {
       }
     });
   });
+  
   test('should handle properly zero and false values', () => {
     const input = {
       zeroValue: 0,

@@ -15,7 +15,7 @@ jest.mock('../validations', () => {
 describe('Validations Tests', () => {
   describe('Numeric Input Validation Tests', () => {
     describe('Memory Size Validation', () => {
-      it('should accept valid memory sizes', () => {
+      test('should accept valid memory sizes', () => {
         
         const validSizes = ['128', '256', '512', '1024', '10240'];
         for (const size of validSizes) {
@@ -35,7 +35,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('should handle empty memory size input', () => {
+      test('should handle empty memory size input', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((name) => {
             if (name === 'memory-size') return '';
@@ -51,7 +51,7 @@ describe('Validations Tests', () => {
         expect(result.parsedMemorySize).toBeUndefined();
         expect(core.setFailed).not.toHaveBeenCalled();
       });
-      it('should handle non-numeric memory size input', () => {
+      test('should handle non-numeric memory size input', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((name) => {
             if (name === 'memory-size') return 'hello';
@@ -68,7 +68,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Timeout Validation', () => {
-      it('should accept valid timeout values', () => {
+      test('should accept valid timeout values', () => {
         
         const validTimeouts = ['1', '30', '300', '900'];
         for (const timeout of validTimeouts) {
@@ -88,7 +88,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('should handle non-numeric memory size input', () => {
+      test('should handle non-numeric memory size input', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((name) => {
             if (name === 'timeout') return 'hello';
@@ -105,7 +105,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Ephemeral Storage Validation', () => {
-      it('should accept valid ephemeral storage values', () => {
+      test('should accept valid ephemeral storage values', () => {
         
         const validStorageValues = ['512', '1024', '2048', '10240'];
         for (const storage of validStorageValues) {
@@ -125,7 +125,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('should handle non-numeric memory size input', () => {
+      test('should handle non-numeric memory size input', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((name) => {
             if (name === 'ephemeral-storage') return 'hello';
@@ -144,7 +144,7 @@ describe('Validations Tests', () => {
   });
   describe('Required Input Validation Tests', () => {
     describe('Function Name Validation', () => {
-      it('should accept valid function names', () => {
+      test('should accept valid function names', () => {
         const validNames = ['my-function', 'my_function', 'my.function', 'my-function-123'];
         for (const name of validNames) {
           jest.clearAllMocks();
@@ -162,7 +162,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('should reject empty function names', () => {
+      test('should reject empty function names', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((inputName) => {
           if (inputName === 'function-name') return '';
@@ -178,7 +178,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Code Artifacts Directory Validation', () => {
-      it('should accept valid code artifacts directories', () => {
+      test('should accept valid code artifacts directories', () => {
         const validDirs = ['./artifacts', '../artifacts', '/home/user/artifacts'];
         for (const dir of validDirs) {
           jest.clearAllMocks();
@@ -196,7 +196,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('should reject empty code artifacts directories', () => {
+      test('should reject empty code artifacts directories', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((inputName) => {
           if (inputName === 'function-name') return 'test-function';
@@ -212,7 +212,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Handler Validation', () => {
-      it('should accept valid handlers', () => {
+      test('should accept valid handlers', () => {
         const validHandlers = ['index.handler', 'my-function.handler', 'my.function.handler'];
         for (const handler of validHandlers) {
           jest.clearAllMocks();
@@ -230,7 +230,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('default to index.handler', () => {
+      test('default to index.handler', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((inputName) => {
           if (inputName === 'function-name') return 'test-function';
@@ -246,7 +246,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Runtime Validation', () => {
-      it('should accept valid runtimes', () => {
+      test('should accept valid runtimes', () => {
         const validRuntimes = ['nodejs18.x', 'nodejs16.x', 'nodejs14.x', 'nodejs12.x'];
         for (const runtime of validRuntimes) {
           jest.clearAllMocks();
@@ -264,7 +264,7 @@ describe('Validations Tests', () => {
           expect(core.setFailed).not.toHaveBeenCalled();
         }
       });
-      it('default to 20js.x', () => {
+      test('default to 20js.x', () => {
         jest.clearAllMocks();
         core.getInput.mockImplementation((inputName) => {
           if (inputName === 'function-name') return 'test-function';
@@ -283,7 +283,7 @@ describe('Validations Tests', () => {
   });
   describe('ARN Input Validation Tests', () => {
     describe('Role ARN Validation', () => {
-      it('should validate role ARN format', () => {
+      test('should validate role ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'role') return 'arn:aws:iam::123456789012:role/test-role';
           if (name === 'function-name') return 'test-function';
@@ -294,7 +294,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should reject invalid role ARN format', () => {
+      test('should reject invalid role ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'role') return 'invalid:arn:format';
           if (name === 'function-name') return 'test-function';
@@ -310,7 +310,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Code Signing Config ARN Validation Test', () => {
-      it('should validate code signing config ARN format', () => {
+      test('should validate code signing config ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'code-signing-config-arn') return 'arn:aws:lambda:us-east-1:123456789012:code-signing-config:abc123';
           if (name === 'function-name') return 'test-function';
@@ -321,7 +321,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should reject invalid code signing config ARN format', () => {
+      test('should reject invalid code signing config ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'code-signing-config-arn') return 'invalid:code:signing:arn';
           if (name === 'function-name') return 'test-function';
@@ -337,7 +337,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('KMS Key ARN Validation', () => {
-      it('should validate KMS key ARN format', () => {
+      test('should validate KMS key ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'kms-key-arn') return 'arn:aws:kms:us-east-1:123456789012:key/abcdef12-3456-7890-abcd-ef1234567890';
           if (name === 'function-name') return 'test-function';
@@ -348,7 +348,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should reject invalid source KMS key ARN format', () => {
+      test('should reject invalid source KMS key ARN format', () => {
         core.getInput.mockImplementation((name) => {
           if (name === 'kms-key-arn') return 'invalid:kms:key:arn';
           if (name === 'source-kms-key-arn') return 'invalid:kms:key:arn'
@@ -871,7 +871,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('VPC Configuration Edge Cases', () => {
-      it('should reject vpc-config with malformed SubnetIds', () => {
+      test('should reject vpc-config with malformed SubnetIds', () => {
         const invalidVpcConfig = JSON.stringify({
           SubnetIds: "subnet-123", 
           SecurityGroupIds: ['sg-123']
@@ -893,7 +893,7 @@ describe('Validations Tests', () => {
           expect.stringContaining("vpc-config must include 'SubnetIds' as an array")
         );
       });
-      it('should reject vpc-config with empty SecurityGroupIds array', () => {
+      test('should reject vpc-config with empty SecurityGroupIds array', () => {
         const validVpcConfig = JSON.stringify({
           SubnetIds: ['subnet-123'],
           SecurityGroupIds: []
@@ -912,7 +912,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Dead Letter Config Validation', () => {
-      it('should validate SQS ARN in dead-letter-config', () => {
+      test('should validate SQS ARN in dead-letter-config', () => {
         const validDLQConfig = JSON.stringify({
           TargetArn: 'arn:aws:sqs:us-east-1:123456789012:my-queue'
         });
@@ -928,7 +928,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should validate SNS ARN in dead-letter-config', () => {
+      test('should validate SNS ARN in dead-letter-config', () => {
         const validDLQConfig = JSON.stringify({
           TargetArn: 'arn:aws:sns:us-east-1:123456789012:my-topic'
         });
@@ -946,7 +946,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Invalid JSON Handling', () => {
-      it('should handle invalid JSON format in vpc-config', () => {
+      test('should handle invalid JSON format in vpc-config', () => {
         const invalidJson = '{ this is not valid JSON }';
         core.getInput.mockImplementation((name) => {
           if (name === 'vpc-config') return invalidJson;
@@ -961,7 +961,7 @@ describe('Validations Tests', () => {
           expect.stringContaining('Invalid JSON in vpc-config')
         );
       });
-      it('should handle invalid JSON format in environment', () => {
+      test('should handle invalid JSON format in environment', () => {
         const invalidJson = '{ ENV: production }';
         core.getInput.mockImplementation((name) => {
           if (name === 'environment') return invalidJson;
@@ -980,7 +980,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Tracing Config Validation', () => {
-      it('should reject invalid tracing mode values', () => {
+      test('should reject invalid tracing mode values', () => {
         const invalidTracingConfig = JSON.stringify({
           Mode: 'Detailed' 
         });
@@ -999,7 +999,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('SnapStart Config Validation', () => {
-      it('should validate PublishedVersions for snap-start', () => {
+      test('should validate PublishedVersions for snap-start', () => {
         const validSnapStart = JSON.stringify({
           ApplyOn: 'PublishedVersions'
         });
@@ -1013,7 +1013,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should validate None for snap-start', () => {
+      test('should validate None for snap-start', () => {
         const validSnapStart = JSON.stringify({
           ApplyOn: 'None'
         });
@@ -1027,7 +1027,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should reject invalid ApplyOn values', () => {
+      test('should reject invalid ApplyOn values', () => {
         const invalidSnapStart = JSON.stringify({
           ApplyOn: 'AllVersions' 
         });
@@ -1046,7 +1046,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('File System Configs Validation', () => {
-      it('should reject non-array file-system-configs', () => {
+      test('should reject non-array file-system-configs', () => {
         const invalidFSConfig = JSON.stringify({
           Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-12345',
           LocalMountPath: '/mnt/efs'
@@ -1064,7 +1064,7 @@ describe('Validations Tests', () => {
           expect.stringContaining("file-system-configs must be an array")
         );
       });
-      it('should reject file-system-configs with missing Arn', () => {
+      test('should reject file-system-configs with missing Arn', () => {
         const invalidFSConfig = JSON.stringify([
           {
             LocalMountPath: '/mnt/efs'
@@ -1083,7 +1083,7 @@ describe('Validations Tests', () => {
           expect.stringContaining("Each file-system-config must include 'Arn' and 'LocalMountPath'")
         );
       });
-      it('should validate multiple file system configs', () => {
+      test('should validate multiple file system configs', () => {
         const validFSConfig = JSON.stringify([
           {
             Arn: 'arn:aws:efs:us-east-1:123456789012:access-point/fsap-12345',
@@ -1106,7 +1106,7 @@ describe('Validations Tests', () => {
       });
     });
     describe('Tags Validation', () => {
-      it('should validate complex tag objects', () => {
+      test('should validate complex tag objects', () => {
         const validTags = JSON.stringify({
           Environment: 'Production',
           Project: 'Lambda-Action',
@@ -1124,7 +1124,7 @@ describe('Validations Tests', () => {
         const result = originalValidations.validateAllInputs();
         expect(result.valid).toBe(true);
       });
-      it('should reject tag arrays', () => {
+      test('should reject tag arrays', () => {
         const invalidTags = JSON.stringify([
           { key: 'Environment', value: 'Production' }
         ]);

@@ -27,7 +27,7 @@ describe('waitForFunctionUpdated function', () => {
     
     waitUntilFunctionUpdated.mockReset();
   });
-  it('should resolve when function update completes successfully', async () => {
+  test('should resolve when function update completes successfully', async () => {
     
     waitUntilFunctionUpdated.mockResolvedValue({});
     
@@ -45,7 +45,7 @@ describe('waitForFunctionUpdated function', () => {
     );
     expect(core.info).toHaveBeenCalledWith(expect.stringContaining('Function update completed successfully'));
   });
-  it('should use custom wait time when specified', async () => {
+  test('should use custom wait time when specified', async () => {
     
     waitUntilFunctionUpdated.mockResolvedValue({});
     const customWaitMinutes = 10;
@@ -63,7 +63,7 @@ describe('waitForFunctionUpdated function', () => {
       })
     );
   });
-  it('should handle waiter TimeoutError', async () => {
+  test('should handle waiter TimeoutError', async () => {
     
     const timeoutError = new Error('Waiter timed out');
     timeoutError.name = 'TimeoutError';
@@ -72,7 +72,7 @@ describe('waitForFunctionUpdated function', () => {
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
       .rejects.toThrow('Timed out waiting for function test-function update to complete after 5 minutes');
   });
-  it('should handle ResourceNotFoundException error', async () => {
+  test('should handle ResourceNotFoundException error', async () => {
     
     const notFoundError = new Error('Function not found');
     notFoundError.name = 'ResourceNotFoundException';
@@ -81,7 +81,7 @@ describe('waitForFunctionUpdated function', () => {
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
       .rejects.toThrow('Function test-function not found');
   });
-  it('should handle permission denied errors', async () => {
+  test('should handle permission denied errors', async () => {
     
     const permissionError = new Error('Permission denied');
     permissionError.$metadata = { httpStatusCode: 403 };
@@ -90,7 +90,7 @@ describe('waitForFunctionUpdated function', () => {
     await expect(waitForFunctionUpdated(mockLambdaClient, 'test-function'))
       .rejects.toThrow('Permission denied while checking function test-function status');
   });
-  it('should handle other errors with appropriate message', async () => {
+  test('should handle other errors with appropriate message', async () => {
     
     const generalError = new Error('Something went wrong');
     waitUntilFunctionUpdated.mockRejectedValue(generalError);
@@ -99,7 +99,7 @@ describe('waitForFunctionUpdated function', () => {
       .rejects.toThrow('Error waiting for function test-function update: Something went wrong');
     expect(core.warning).toHaveBeenCalledWith('Function update check error: Something went wrong');
   });
-  it('should cap wait time to maximum allowed', async () => {
+  test('should cap wait time to maximum allowed', async () => {
     
     waitUntilFunctionUpdated.mockResolvedValue({});
     

@@ -1,6 +1,5 @@
 const core = require('@actions/core');
 const { LambdaClient, UpdateFunctionConfigurationCommand,UpdateFunctionCodeCommand,GetFunctionConfigurationCommand,waitUntilFunctionUpdated} = require('@aws-sdk/client-lambda');
-const { S3Client } = require('@aws-sdk/client-s3');
 const fs = require('fs/promises');
 const path = require('path');
 const mainModule = require('../index');

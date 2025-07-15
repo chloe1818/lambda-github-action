@@ -93,7 +93,7 @@ describe('Code Artifacts Tests', () => {
     LambdaClient.prototype.send = jest.fn().mockResolvedValue(mockLambdaResponse);
   });
   
-  it('should package artifacts and deploy to Lambda', async () => {
+  test('should package artifacts and deploy to Lambda', async () => {
     mainModule.run.mockImplementationOnce(async () => {
       await fs.mkdir('/mock/cwd/lambda-package', { recursive: true });
       const files = await glob('**/*', { cwd: '/mock/artifacts', dot: true });
@@ -117,7 +117,7 @@ describe('Code Artifacts Tests', () => {
     expect(core.setFailed).not.toHaveBeenCalled();
   });
   
-  it('should handle artifacts packaging failure gracefully', async () => {
+  test('should handle artifacts packaging failure', async () => {
     
     const packageError = new Error('Failed to create package');
     fs.mkdir.mockRejectedValueOnce(packageError);
@@ -135,7 +135,7 @@ describe('Code Artifacts Tests', () => {
     expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining('Action failed with error'));
   });
   
-  it('should correctly use code-artifacts-dir when provided', async () => {
+  test('should correctly use code-artifacts-dir when provided', async () => {
     
     core.getInput.mockImplementation((name) => {
       const inputs = {
@@ -158,7 +158,7 @@ describe('Code Artifacts Tests', () => {
     expect(core.setFailed).not.toHaveBeenCalled();
   });
   
-  it('should fail when code-artifacts-dir is missing', async () => {
+  test('should fail when code-artifacts-dir is missing', async () => {
     
     core.getInput.mockImplementation((name) => {
       const inputs = {

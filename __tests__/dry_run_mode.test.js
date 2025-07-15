@@ -26,6 +26,7 @@ const fs = require('fs/promises');
 describe('Dry Run Mode Tests', () => {
   let index;
   let mockLambdaClient;
+  
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
@@ -45,7 +46,7 @@ describe('Dry Run Mode Tests', () => {
     index = require('../index');
   });
   
-  test('should prevent function creation when in dry run mode', async () => {
+  test('No function creation in dry run mode', async () => {
     
     const functionName = 'test-function';
     const dryRun = true;
@@ -58,7 +59,7 @@ describe('Dry Run Mode Tests', () => {
     );
   });
   
-  test('should skip configuration updates in dry run mode', async () => {
+  test('Skip configuration updates in dry run mode', async () => {
     
     const configChanged = true;
     const dryRun = true;
@@ -72,7 +73,7 @@ describe('Dry Run Mode Tests', () => {
     );
   });
   
-  test('should add DryRun flag and simulate code updates in dry run mode', async () => {
+  test('Add DryRun flag', async () => {
     
     const functionName = 'test-function';
     const dryRun = true;
