@@ -131,6 +131,8 @@ jobs:
 |------|-------------|----------|---------|
 | `function-name` | Name of the Lambda function | Yes | |
 | `code-artifacts-dir` | Path to a directory of code artifacts to zip and deploy | Yes | |
+| `handler` | Name of the function handler method | Yes | `index.handler` |
+| `runtime` | Function runtime identifier | Yes | `nodejs20.x` |
 | `s3-bucket` | S3 bucket name for Lambda deployment package. Uses S3 deployment method if provided | No | |
 | `s3-key` | S3 key (path) for the Lambda deployment package | No | Auto-generated |
 | `publish` | Publish a new version of the function after updating | No | `true` |
@@ -139,13 +141,11 @@ jobs:
 | `architectures` | Function instruction set architecture | No | `x86_64` |
 | `source-kms-key-arn` | ARN of the KMS key for encrypting deployment package | No | |
 | `role` | ARN of the function's execution role (required for new functions) | No | |
-| `handler` | Name of the function handler method | No | |
 | `function-description` | Description of the function | No | |
 | `memory-size` | Amount of memory available to the function at runtime | No | |
 | `timeout` | Function timeout in seconds | No | `3` |
 | `vpc-config` | VPC configuration for network connectivity | No | |
 | `environment` | Environment variables as JSON string | No | |
-| `runtime` | Function runtime identifier | No | `nodejs22.x` |
 | `dead-letter-config` | Dead letter queue or topic for failed events | No | |
 | `kms-key-arn` | ARN of KMS customer managed key | No | |
 | `tracing-config` | X-Ray tracing configuration | No | |
