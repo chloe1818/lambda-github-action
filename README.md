@@ -277,3 +277,4 @@ If you're using the S3 deployment method, ensure your IAM role also has the foll
 We recommend reading [AWS Lambda Security Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/security-best-practices.html) for more information on securing your Lambda functions.
 
 ## License
+MIT-0
